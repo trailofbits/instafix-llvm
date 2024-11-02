@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linkage/IR/Linkage.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 using namespace mlir;
 
@@ -15,3 +16,9 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linkage/IR/Linkage.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// Linkage Enums
+//===----------------------------------------------------------------------===//
+
+#include "mlir/Dialect/Linkage/IR/LinkageEnums.cpp.inc"
