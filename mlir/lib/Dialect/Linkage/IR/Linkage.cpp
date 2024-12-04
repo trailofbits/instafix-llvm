@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Linkage/IR/Linkage.h"
+#include "llvm/ADT/StringExtras.h"
 #include "mlir/IR/BuiltinTypes.h"
 
 using namespace mlir;
