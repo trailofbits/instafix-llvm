@@ -1453,6 +1453,9 @@ def LLVM_GlobalOp : LLVM_Op<"mlir.global",
     }
   }];
 
+  let extraClassDefinition = [{
+    bool $cppClass::isDeclarationForLinkage() { return getInitializerRegion().empty(); }
+  }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
   let hasRegionVerifier = 1;
@@ -2030,6 +2033,10 @@ def LLVM_LLVMFuncOp : LLVM_Op<"func", [
     /// Returns true if the `optimize_none` attribute is set, false otherwise.
     bool isOptimizeNone() { return bool(getOptimizeNoneAttr()); }
 
+  }];
+
+  let extraClassDefinition = [{
+    bool $cppClass::isDeclarationForLinkage() { return getBody().empty(); }
   }];
 
   let hasCustomAssemblyFormat = 1;
