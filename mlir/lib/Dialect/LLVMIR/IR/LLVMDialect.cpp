@@ -2519,6 +2519,8 @@ GlobalOp::getComdatSelectionKind() {
   return getComdatSelectionKindImpl(*this);
 }
 
+bool GlobalOp::isConstant() { return getConstant(); }
+
 //===----------------------------------------------------------------------===//
 // LLVM::GlobalCtorsOp
 //===----------------------------------------------------------------------===//
