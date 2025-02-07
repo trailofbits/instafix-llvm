@@ -255,12 +255,29 @@ void ModuleLinker::dropReplacedComdat(
   llvm_unreachable("unimplemented");
 }
 
+void
+dumpop(Operation * op, const char* msg) {
+  llvm::outs() << "\n==== " << msg << " ===\n";
+  if (auto sym = dyn_cast<SymbolOpInterface>(op)) {
+    llvm::outs() << "[" << sym.getName() << "]\n";
+  } 
+  op->dump();
+}
+
+template<typename T>
+typename std::enable_if_t<!std::is_pointer_v<T>, void>
+dump(T iface, const char* msg) {
+  Operation *op = iface.getOperation();
+  dumpop(op, msg);
+}
+
 // Returns true if no linking is needed
 bool ModuleLinker::linkIfNeeded(GlobalValueLinkageOpInterface gv,
                                 std::vector<Operation *> &gvToClone) {
 
   GlobalValueLinkageOpInterface dgv = getLinkedToGlobal(gv);
 
+  dump(gv, "linkIfNeeded");
   if (shouldLinkOnlyNeeded()) {
     // Always import variables with appending linkage.
     if (!gv.hasAppendingLinkage()) {
@@ -275,6 +292,7 @@ bool ModuleLinker::linkIfNeeded(GlobalValueLinkageOpInterface gv,
     }
   }
 
+  llvm::outs() << "a\n";
   if (dgv && !gv.hasLocalLinkage() && !gv.hasAppendingLinkage()) {
     auto dgvar = dyn_cast<GlobalVariableLinkageOpInterface>(dgv.getOperation());
     auto sgvar = dyn_cast<GlobalVariableLinkageOpInterface>(gv.getOperation());
@@ -291,16 +309,17 @@ bool ModuleLinker::linkIfNeeded(GlobalValueLinkageOpInterface gv,
 
     // TODO: Implement
     // llvm_unreachable("unimplemented");
+  llvm::outs() << "b\n";
   }
 
   if (!dgv && !shouldOverrideFromSrc() &&
       (gv.hasLocalLinkage() || gv.hasLinkOnceLinkage() ||
        gv.hasAvailableExternallyLinkage()))
     return false;
-
+  llvm::outs() << "c\n";
   if (gv.isDeclarationForLinkage())
     return false;
-
+  llvm::outs() << "d\n";
   LinkFrom comdatFrom = LinkFrom::Dst;
   if (gv.getComdatSelectionKind()) {
     comdatFrom = comdatsChosen[dgv.getLinkedName()].second;
@@ -381,6 +400,11 @@ LogicalResult ModuleLinker::run() {
     }
   }
 
+  llvm::outs() << "----- Values To Link final:\n";
+  for (auto v : valuesToLink) {
+    v->dump();
+  }
+  llvm::outs() << "----- \n";
   bool hasErrors = false;
   // TODO: We are moving whatever the local src points to here (this->src), so
   // it can't be touched past this point.

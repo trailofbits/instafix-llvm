@@ -10,6 +10,7 @@
 #include "llvm/Support/Error.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/IRMapping.h"
 
 #include <assert.h>
@@ -257,16 +258,19 @@ Operation *MLIRLinker::materialize(GlobalValueLinkageOpInterface v,
   if (!*newProto)
     return nullptr;
 
-  GlobalValueLinkageOpInterface newGvl =
+  GlobalValueLinkageOpInterface new_ =
       dyn_cast<GlobalValueLinkageOpInterface>(*newProto);
-  if (!newGvl)
+  if (!new_)
     return *newProto;
 
   // If we already created the body, just return.
-  if (auto f = dyn_cast<GlobalFuncLinkageOpInterface>(newGvl.getOperation())) {
+  if (auto f = dyn_cast<GlobalFuncLinkageOpInterface>(new_.getOperation())) {
     if (!f.isDeclarationForLinkage()) {
-      return *newProto;
+      return new_.getOperation();
     }
+  } else if (auto v = dyn_cast<GlobalVariableLinkageOpInterface>(new_.getOperation())) {
+    if (!v.isDeclarationForLinkage() || v.hasAppendingLinkage())
+      return new_.getOperation();
   }
   // TODO: Lots of if cases for Function, global variable, global alias.
   // for now, just check if it is a declaration, if so, not much more to do.
@@ -281,11 +285,11 @@ Operation *MLIRLinker::materialize(GlobalValueLinkageOpInterface v,
   // new definition for the indirect symbol ("New" will be different).
   // TODO: Some indirect symbol thing
 
-  if (forIndirectSymbol || shouldLink(newGvl.getOperation(), v.getOperation()))
-    setError(linkGlobalValueBody(newGvl.getOperation(), v));
+  if (forIndirectSymbol || shouldLink(new_.getOperation(), v.getOperation()))
+    setError(linkGlobalValueBody(new_.getOperation(), v));
 
   // TODO: Update attributes
-  return newGvl.getOperation();
+  return new_.getOperation();
 }
 
 /// Update the initializers in the Dest module now that all globals that may be
@@ -296,7 +300,6 @@ void MLIRLinker::linkGlobalVariable(Operation *dst,
   // TODO: This will likely only need to happen for those that have an
   // initializer, not for constants
 }
-
 /// Copy the source function over into the dest function and fix up references
 /// to values. At this point we know that Dest is an external function, and
 /// that Src is not.
@@ -312,6 +315,21 @@ Error MLIRLinker::linkFunctionBody(Operation *dst,
   assert(src->getNumRegions() == dst->getNumRegions() &&
          "Operations must have same number of regions");
 
+  src.getOperation()->walk([&](Operation *op) {
+    op->dump();
+
+    if (auto v = dyn_cast<SymbolUserOpInterface>(op)) {
+    llvm::outs() << "Op name: " << op->getName() << "\n";  // Check if it's AddressOfOp
+    llvm::outs() << "Cast succeeded\n";
+    auto val = v.getUserSymbol();
+    llvm::outs() << "getUserSymbol(): [ " << val << " ]\n";
+}
+if (auto addressOfOp = dyn_cast<LLVM::AddressOfOp>(op)) {
+    auto val = addressOfOp.getUserSymbol();
+    llvm::outs() << "Direct call: [ " << val << " ]\n";
+}
+
+  });
   for (auto [srcRegion, dstRegion] :
        llvm::zip(src->getRegions(), dst->getRegions())) {
     dstRegion.takeBody(srcRegion);
@@ -319,7 +337,9 @@ Error MLIRLinker::linkFunctionBody(Operation *dst,
 
   // TODO: several steps here, copy metadata, steal arg list and schedule
   // remapfunction. What is needed?
+  llvm::outs()<<"linkFunctionBody: " << src.getLinkedName() << "\n";
 
+  // TODO: Schedule remap:
   // auto target = src.getOperation()->clone(mapping);
   // dst->replaceAllUsesWith(target);
   // dst is an external sym and src is not
@@ -333,6 +353,8 @@ Error MLIRLinker::linkGlobalValueBody(Operation *dst,
   if (auto gvar =
           dyn_cast<GlobalVariableLinkageOpInterface>(src.getOperation())) {
     linkGlobalVariable(dst, gvar);
+
+
     return Error::success();
   }
 

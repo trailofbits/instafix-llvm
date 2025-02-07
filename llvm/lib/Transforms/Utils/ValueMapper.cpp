@@ -965,6 +965,8 @@ void Mapper::flush() {
 }
 
 void Mapper::remapInstruction(Instruction *I) {
+  llvm::outs() << "remapInstruction";
+  I->dump();
   // Remap operands.
   for (Use &Op : I->operands()) {
     Value *V = mapValue(Op);

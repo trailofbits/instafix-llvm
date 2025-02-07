@@ -328,6 +328,7 @@ bool ModuleLinker::shouldLinkFromSource(bool &LinkFromSrc,
 bool ModuleLinker::linkIfNeeded(GlobalValue &GV,
                                 SmallVectorImpl<GlobalValue *> &GVToClone) {
   GlobalValue *DGV = getLinkedToGlobal(&GV);
+  GV.dump();
 
   if (shouldLinkOnlyNeeded()) {
     // Always import variables with appending linkage.
@@ -341,7 +342,7 @@ bool ModuleLinker::linkIfNeeded(GlobalValue &GV,
         return false;
     }
   }
-
+  llvm::outs() << "a\n";
   if (DGV && !GV.hasLocalLinkage() && !GV.hasAppendingLinkage()) {
     auto *DGVar = dyn_cast<GlobalVariable>(DGV);
     auto *SGVar = dyn_cast<GlobalVariable>(&GV);
@@ -372,16 +373,20 @@ bool ModuleLinker::linkIfNeeded(GlobalValue &GV,
         DGV->getUnnamedAddr(), GV.getUnnamedAddr());
     DGV->setUnnamedAddr(UnnamedAddr);
     GV.setUnnamedAddr(UnnamedAddr);
+    llvm::outs() << "b\n";
   }
 
   if (!DGV && !shouldOverrideFromSrc() &&
       (GV.hasLocalLinkage() || GV.hasLinkOnceLinkage() ||
        GV.hasAvailableExternallyLinkage()))
     return false;
+  llvm::outs() << "c\n";
 
+  llvm::outs() << GV.getName() << " GV.isDeclaration" << GV.isDeclaration() << "\n";
   if (GV.isDeclaration())
     return false;
 
+  llvm::outs() << "d\n";
   LinkFrom ComdatFrom = LinkFrom::Dst;
   if (const Comdat *SC = GV.getComdat()) {
     std::tie(std::ignore, ComdatFrom) = ComdatsChosen[SC];
@@ -556,8 +561,11 @@ bool ModuleLinker::run() {
   // preserved (its content may be implicitly used by other members) even if
   // symbol resolution does not pick it. Clone it into an unnamed private
   // variable.
+    llvm::outs() << "GVToClone\n";
   for (GlobalValue *GV : GVToClone) {
     if (auto *Var = dyn_cast<GlobalVariable>(GV)) {
+    llvm::outs() << "GV: ";
+    Var->dump();
       auto *NewVar = new GlobalVariable(*Var->getParent(), Var->getValueType(),
                                         Var->isConstant(), Var->getLinkage(),
                                         Var->getInitializer());
@@ -574,11 +582,13 @@ bool ModuleLinker::run() {
     }
   }
 
+    llvm::outs() << "for I ValuesToLink\n";
   for (unsigned I = 0; I < ValuesToLink.size(); ++I) {
     GlobalValue *GV = ValuesToLink[I];
     const Comdat *SC = GV->getComdat();
     if (!SC)
       continue;
+    llvm::outs() << "HasComdat"; GV->dump();
     for (GlobalValue *GV2 : LazyComdatMembers[SC]) {
       GlobalValue *DGV = getLinkedToGlobal(GV2);
       bool LinkFromSrc = true;
@@ -593,6 +603,12 @@ bool ModuleLinker::run() {
     for (GlobalValue *GV : ValuesToLink)
       Internalize.insert(GV->getName());
   }
+
+  llvm::outs() << "----- Values To Link final:\n";
+  for (auto v : ValuesToLink) {
+    v->dump();
+  }
+  llvm::outs() << "----- \n";
 
   // FIXME: Propagate Errors through to the caller instead of emitting
   // diagnostics.
