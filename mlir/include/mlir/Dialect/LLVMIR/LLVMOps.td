@@ -823,11 +823,6 @@ def LLVM_CallOp : LLVM_MemAccessOpBase<"call",
     /// Returns the callee function type.
     LLVMFunctionType getCalleeFunctionType();
   }];
-  let extraClassDefinition = [{
-    std::optional<::mlir::StringRef> $cppClass::getUserSymbol() {
-      return getCallee();
-    }
-  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1295,13 +1290,6 @@ def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
     /// here.
     IFuncOp getIFunc(SymbolTableCollection &symbolTable);
 }];
-
-  let extraClassDefinition = [{
-    std::optional<::mlir::StringRef> $cppClass::getUserSymbol() {
-      return {getGlobalName()};
-    }
-  }];
-
   let assemblyFormat = "$global_name attr-dict `:` qualified(type($res))";
 
   let hasFolder = 1;
