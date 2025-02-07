@@ -730,7 +730,7 @@ def LLVM_CallOp : LLVM_MemAccessOpBase<"call",
                     [AttrSizedOperandSegments,
                      DeclareOpInterfaceMethods<FastmathFlagsInterface>,
                      DeclareOpInterfaceMethods<CallOpInterface>,
-                     DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+                     DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>,
                      DeclareOpInterfaceMethods<BranchWeightOpInterface>]> {
   let summary = "Call to an LLVM function.";
   let description = [{
@@ -813,6 +813,11 @@ def LLVM_CallOp : LLVM_MemAccessOpBase<"call",
   let extraClassDeclaration = [{
     /// Returns the callee function type.
     LLVMFunctionType getCalleeFunctionType();
+  }];
+  let extraClassDefinition = [{
+    std::optional<::mlir::StringRef> $cppClass::getUserSymbol() {
+      return getCallee();
+    }
   }];
 }
 
@@ -1192,7 +1197,7 @@ def LLVM_SwitchOp : LLVM_TerminatorOp<"switch",
 ////////////////////////////////////////////////////////////////////////////////
 
 def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
-    [Pure, ConstantLike, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    [Pure, ConstantLike, SymbolUserOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>]> {
   let arguments = (ins FlatSymbolRefAttr:$global_name);
   let results = (outs LLVM_AnyPointer:$res);
 
@@ -1272,6 +1277,13 @@ def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
     /// Return the llvm.mlir.alias operation that defined the value referenced
     /// here.
     AliasOp getAlias(SymbolTableCollection &symbolTable);
+
+  }];
+
+  let extraClassDefinition = [{
+    std::optional<::mlir::StringRef> $cppClass::getUserSymbol() {
+      return {getGlobalName()};
+    }
   }];
 
   let assemblyFormat = "$global_name attr-dict `:` qualified(type($res))";
