@@ -1313,6 +1313,7 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 
   return success();
 }
+std::optional<::mlir::StringRef> CallOp::getUserSymbol() { return getCallee(); }
 
 void CallOp::print(OpAsmPrinter &p) {
   auto callee = getCallee();
@@ -2131,6 +2132,10 @@ AddressOfOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
                        "referenced global or alias");
 
   return success();
+}
+
+std::optional<::mlir::StringRef> AddressOfOp::getUserSymbol() {
+  return getGlobalName();
 }
 
 // AddressOfOp constant-folds to the global symbol name.
