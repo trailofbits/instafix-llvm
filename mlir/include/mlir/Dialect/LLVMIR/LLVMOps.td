@@ -735,12 +735,11 @@ def LLVM_VaArgOp : LLVM_Op<"va_arg"> {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-def LLVM_CallOp
-    : LLVM_MemAccessOpBase<
-          "call", [AttrSizedOperandSegments,
-                   DeclareOpInterfaceMethods<FastmathFlagsInterface>,
-                   DeclareOpInterfaceMethods<CallOpInterface>,
-                   DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def LLVM_CallOp : LLVM_MemAccessOpBase<"call",
+                    [AttrSizedOperandSegments,
+                     DeclareOpInterfaceMethods<FastmathFlagsInterface>,
+                     DeclareOpInterfaceMethods<CallOpInterface>,
+                     DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>]> {
   let summary = "Call to an LLVM function.";
   let description = [{
     In LLVM IR, functions may return either 0 or 1 value. LLVM IR dialect
@@ -823,6 +822,11 @@ def LLVM_CallOp
   let extraClassDeclaration = [{
     /// Returns the callee function type.
     LLVMFunctionType getCalleeFunctionType();
+  }];
+  let extraClassDefinition = [{
+    std::optional<::mlir::StringRef> $cppClass::getUserSymbol() {
+      return getCallee();
+    }
   }];
 }
 
@@ -1206,7 +1210,7 @@ def LLVM_SwitchOp
 ////////////////////////////////////////////////////////////////////////////////
 
 def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
-    [Pure, ConstantLike, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    [Pure, ConstantLike, SymbolUserOpInterface, DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>]> {
   let arguments = (ins FlatSymbolRefAttr:$global_name);
   let results = (outs LLVM_AnyPointer:$res);
 
@@ -1290,6 +1294,12 @@ def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
     /// Return the llvm.mlir.ifunc operation that defined the value referenced
     /// here.
     IFuncOp getIFunc(SymbolTableCollection &symbolTable);
+}];
+
+  let extraClassDefinition = [{
+    std::optional<::mlir::StringRef> $cppClass::getUserSymbol() {
+      return {getGlobalName()};
+    }
   }];
 
   let assemblyFormat = "$global_name attr-dict `:` qualified(type($res))";
