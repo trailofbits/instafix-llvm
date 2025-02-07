@@ -21,6 +21,50 @@ using llvm::Expected;
 
 namespace {
 
+
+
+// NOTE: This is a simplified version of the LLVM IR one.
+template<typename T>
+class ValueMapper {
+  public:
+  // TODO: Consider creating an interface for the materializer
+  ValueMapper(IRMapping &valueMap, T &materializer) : valueMap(valueMap), materializer(materializer) {}
+
+  // TODO: Maybe this should be called remapValue?
+  void scheduleRemapFunction(GlobalFuncLinkageOpInterface v) {
+    remapWorklist.push_back(v);
+  }
+
+  Operation *mapValue(GlobalValueLinkageOpInterface v){
+    // TODO: What about for indirect symbol?
+    auto result = materializer.materialize(v, false);
+    valueMap.map(v.getOperation(), result);
+    return result;
+  };
+
+  void flush();
+  private:
+
+  struct FlushingMapper {
+    ValueMapper *impl;
+
+    ~FlushingMapper() {
+      impl->flush();
+    }
+    
+  };
+
+  IRMapping &valueMap;
+  T &materializer;
+
+
+  // TODO: The worklist is just a function linkage opfor now.
+  // Once we add global value init we will need to extend it.
+  SmallVector<GlobalFuncLinkageOpInterface, 4> remapWorklist;
+
+
+};
+
 class MLIRLinker {
   Operation *composite;
   OwningOpRef<Operation *> src;
@@ -29,10 +73,17 @@ class MLIRLinker {
   // the equivalent in mlir.
   IRMapping valueMap;
 
+  ValueMapper<MLIRLinker> mapper;
+
   DenseSet<GlobalValueLinkageOpInterface> valuesToLink;
   std::vector<GlobalValueLinkageOpInterface> worklist;
   // Replace-all-uses-with worklist
   std::vector<std::pair<Operation *, Operation *>> rauwWorklist;
+
+
+  // NOTE: This is the ValueMapper flush
+  void flush();
+
 
   bool doneLinkingBodies;
 
@@ -102,7 +153,7 @@ class MLIRLinker {
 public:
   MLIRLinker(Operation *composite, OwningOpRef<Operation *> srcOp,
              ArrayRef<GlobalValueLinkageOpInterface> valuesToLink)
-      : composite{composite}, src{std::move(srcOp)} {
+      : composite{composite}, src{std::move(srcOp)}, mapper{valueMap, *this} {
     for (GlobalValueLinkageOpInterface gvl : valuesToLink)
       maybeAdd(gvl);
   }
@@ -372,9 +423,7 @@ Error MLIRLinker::run() {
 
     assert(!gvl.isDeclarationForLinkage());
 
-    // TODO: Is this the equivalent of Mapper.mapValue?
-    auto newGvl = materialize(gvl, false);
-    valueMap.map(gvl.getOperation(), newGvl);
+    mapper.mapValue(gvl);
 
     if (foundError)
       return std::move(*foundError);
