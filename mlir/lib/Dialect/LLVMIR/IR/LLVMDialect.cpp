@@ -22,6 +22,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "mlir/Linker/LinkerInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
 
 #include "llvm/ADT/TypeSwitch.h"
@@ -4437,4 +4438,22 @@ Operation *mlir::LLVM::parentLLVMModule(Operation *op) {
     module = module->getParentOp();
   assert(module && "unexpected operation outside of a module");
   return module;
+}
+
+//===----------------------------------------------------------------------===//
+// LinkageInterface implementation
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct LLVMLinkerInterface : public LinkerInterface {
+  using LinkerInterface::LinkerInterface;
+};
+
+} // end anonymous namespace
+
+void mlir::LLVM::registerLinkerInterface(DialectRegistry &registry) {
+  registry.addExtension(+[](MLIRContext *ctx, LLVM::LLVMDialect *dialect) {
+    dialect->addInterfaces<LLVMLinkerInterface>();
+  });
 }

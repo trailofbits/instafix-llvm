@@ -172,6 +172,7 @@ inline void registerAllDialects(DialectRegistry &registry) {
   gpu::registerBufferDeallocationOpInterfaceExternalModels(registry);
   gpu::registerValueBoundsOpInterfaceExternalModels(registry);
   LLVM::registerInlinerInterface(registry);
+  LLVM::registerLinkerInterface(registry);
   NVVM::registerInlinerInterface(registry);
   linalg::registerAllDialectInterfaceImplementations(registry);
   linalg::registerRuntimeVerifiableOpInterfaceExternalModels(registry);
