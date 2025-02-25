@@ -167,7 +167,7 @@ public:
   /// Convert type T into a mlir::Type.
   mlir::Type convertType(clang::QualType T);
 
-  mlir::Type convertRecordDeclType(const clang::RecordDecl *recordDecl);
+  cir::RecordType convertRecordDeclType(const clang::RecordDecl *recordDecl);
 
   std::unique_ptr<CIRGenRecordLayout>
   computeRecordLayout(const clang::RecordDecl *D, cir::RecordType *Ty);

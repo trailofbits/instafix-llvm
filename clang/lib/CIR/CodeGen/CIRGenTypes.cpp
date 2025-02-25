@@ -168,7 +168,7 @@ static bool isSafeToConvert(const RecordDecl *RD, CIRGenTypes &CGT) {
 }
 
 /// Lay out a tagged decl type like record or union.
-mlir::Type CIRGenTypes::convertRecordDeclType(const clang::RecordDecl *RD) {
+cir::RecordType CIRGenTypes::convertRecordDeclType(const clang::RecordDecl *RD) {
   // TagDecl's are not necessarily unique, instead use the (clang) type
   // connected to the decl.
   const auto *key = astContext.getTagDeclType(RD).getTypePtr();

@@ -73,7 +73,7 @@ def CIR_TBAAScalarAttr : CIR_Attr<"TBAAScalar", "tbaa_scalar", [], "TBAAAttr"> {
   }];
 
   let builders = [
-    AttrBuilder<(ins "llvm::StringRef":$id, 
+    AttrBuilder<(ins "llvm::StringRef":$id,
                      "mlir::Type":$type), [{
       return $_get($_ctxt, id, type, /*parent =*/ nullptr);
     }]>
@@ -103,7 +103,7 @@ def CIR_TBAAMemberAttr : CIR_Attr<"TBAAMember", "tbaa_member", []> {
     !rec_StructS = !cir.record<struct "StructS" {!u16i, !u32i} #cir.record.decl.ast>
     #tbaa_scalar = #cir.tbaa_scalar<id = "int", type = !s32i>
     #tbaa_scalar1 = #cir.tbaa_scalar<id = "short", type = !s16i>
-    #tbaa_struct = #cir.tbaa_struct<id = "_ZTS7StructS", members = {<#tbaa_scalar1, 0>, <#tbaa_scalar, 4>}>
+    #tbaa_struct = #cir.tbaa_struct<id = "_ZTS7StructS", type = !ty_StructS, members = {<#tbaa_scalar1, 0>, <#tbaa_scalar, 4>}>
     ```
 
     See the following link for more details:
@@ -142,6 +142,7 @@ def CIR_TBAAStructAttr : CIR_Attr<"TBAAStruct",
   let summary = "Describes a struct type in TBAA";
 
   let parameters = (ins StringRefParameter<> : $id,
+                        CIR_RecordType:$type,
                         CIR_TBAAMemberAttrArray:$members);
 
   let description = [{
@@ -153,7 +154,7 @@ def CIR_TBAAStructAttr : CIR_Attr<"TBAAStruct",
     #tbaa_scalar = #cir.tbaa_scalar<id = "int", type = !s32i>
     #tbaa_scalar1 = #cir.tbaa_scalar<id = "short", type = !s16i>
     // CIR_TBAAStructAttr
-    #tbaa_struct = #cir.tbaa_struct<id = "_ZTS7StructS", members = {<#tbaa_scalar1, 0>, <#tbaa_scalar, 4>}>
+    #tbaa_struct = #cir.tbaa_struct<id = "_ZTS7StructS", type = !ty_StructS, members = {<#tbaa_scalar1, 0>, <#tbaa_scalar, 4>}>
     ```
 
     See the following link for more details:
@@ -164,7 +165,7 @@ def CIR_TBAAStructAttr : CIR_Attr<"TBAAStruct",
 }
 
 def CIR_AnyTBAAAttr : AnyAttrOf<[
-  CIR_TBAAAttr, 
+  CIR_TBAAAttr,
   CIR_TBAAOmnipotentChar,
   CIR_TBAAVTablePointerAttr,
   CIR_TBAAScalarAttr,
