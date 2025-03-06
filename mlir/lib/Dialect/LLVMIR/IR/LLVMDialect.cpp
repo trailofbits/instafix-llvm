@@ -572,7 +572,7 @@ static void printSwitchOpCases(OpAsmPrinter &p, SwitchOp op, Type flagType,
       llvm::zip(caseValues, caseDestinations),
       [&](auto i) {
         p << "  ";
-        p << std::get<0>(i);
+        p << std::get<0>(i).getSExtValue();
         p << ": ";
         p.printSuccessorAndUseList(std::get<1>(i), caseOperands[index++]);
       },
