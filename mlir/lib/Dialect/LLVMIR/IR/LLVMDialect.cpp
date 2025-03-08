@@ -2502,8 +2502,6 @@ LogicalResult GlobalOp::verifyRegions() {
   return success();
 }
 
-bool GlobalOp::isConstant() { return getConstant(); }
-
 //===----------------------------------------------------------------------===//
 // LLVM::GlobalCtorsOp
 //===----------------------------------------------------------------------===//
