@@ -10,7 +10,6 @@ set(LLVM_OPTIONAL_SOURCES
   FunctionInterfaces.cpp
   InferIntRangeInterface.cpp
   InferTypeOpInterface.cpp
-  LinkageInterfaces.cpp
   LoopLikeInterface.cpp
   MemorySlotInterfaces.cpp
   ParallelCombiningOpInterface.cpp
@@ -65,7 +64,6 @@ add_mlir_library(MLIRFunctionInterfaces
 
 add_mlir_interface_library(InferIntRangeInterface)
 add_mlir_interface_library(InferTypeOpInterface)
-add_mlir_interface_library(LinkageInterfaces)
 
 add_mlir_library(MLIRLoopLikeInterface
   LoopLikeInterface.cpp
