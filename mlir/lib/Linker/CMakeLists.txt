@@ -1,6 +1,5 @@
 add_mlir_library(
   MLIRLinker
-  IRMover.cpp
   Linker.cpp
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Linker
@@ -8,5 +7,4 @@ add_mlir_library(
   PUBLIC
   MLIRAsmParser
   MLIRBytecodeReader
-  MLIRLinkageInterfaces
   MLIRIR)
