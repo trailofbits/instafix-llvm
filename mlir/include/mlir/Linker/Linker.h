@@ -1,4 +1,4 @@
-//===- Linker.h - MLIR Module Linker ----------------------------*- C++ -*-===//
+//===----------------------------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,22 +9,15 @@
 #ifndef MLIR_LINKER_LINKER_H
 #define MLIR_LINKER_LINKER_H
 
-#include "mlir/Linker/IRMover.h"
+#include "mlir/IR/BuiltinOps.h"
 
-#include "mlir/Interfaces/LinkageInterfaces.h"
-
+#include "mlir/Linker/LinkerInterface.h"
 namespace mlir::link {
 
-using InternalizeCallbackFn =
-    std::function<void(ModuleOp, const StringSet<> &)>;
-
 /// These are gathered alphabetically sorted linker options
-class LinkerConfig {
+class LinkerOptions {
 public:
-  /// Allow operation with no registered dialects.
-  /// This option is for convenience during testing only and discouraged in
-  /// general.
-  LinkerConfig &allowUnregisteredDialects(bool allow) {
+  LinkerOptions &allowUnregisteredDialects(bool allow) {
     allowUnregisteredDialectsFlag = allow;
     return *this;
   }
@@ -32,29 +25,28 @@ public:
     return allowUnregisteredDialectsFlag;
   }
 
-  LinkerConfig &internalizeLinkedSymbols(bool allow) {
-    internalizeLinkedSymbolsFlag = allow;
-    return *this;
-  }
-  bool shouldInternalizeLinkedSymbols() const {
-    return internalizeLinkedSymbolsFlag;
-  }
-
-  LinkerConfig &linkOnlyNeeded(bool allow) {
+  LinkerOptions &linkOnlyNeeded(bool allow) {
     linkOnlyNeededFlag = allow;
     return *this;
   }
   bool shouldLinkOnlyNeeded() const { return linkOnlyNeededFlag; }
 
+  LinkerOptions &keepModulesAlive(bool keep) {
+    keepModulesAliveFlag = keep;
+    return *this;
+  }
+  bool shouldKeepModulesAlive() const { return keepModulesAliveFlag; }
+
 protected:
-  /// Allow operation with no registered dialects.
-  /// This option is for convenience during testing only and discouraged in
-  /// general.
+  /// Whether to allow operation with no registered dialects
   bool allowUnregisteredDialectsFlag = false;
 
-  bool internalizeLinkedSymbolsFlag = false;
-
+  /// Whether to link only needed symbols
   bool linkOnlyNeededFlag = false;
+
+  /// Keep modules alive until the end of the linking
+  /// TODO: Add on-the-fly linking
+  bool keepModulesAliveFlag = true;
 };
 
 /// This class provides the core functionality of linking in MLIR, it mirrors
@@ -64,47 +56,45 @@ protected:
 /// after the linking.
 class Linker {
 public:
-  enum Flags {
-    None = 0,
-    OverrideFromSrc = (1 << 0),
-    LinkOnlyNeeded = (1 << 1),
-  };
+  Linker(MLIRContext *context, const LinkerOptions &options = {})
+      : context(context), options(options) {}
 
-  struct LinkFileConfig {
-    unsigned flags = Flags::None;
-    bool internalize = false;
-  };
+  /// Add a module to be linked
+  LogicalResult addModule(OwningOpRef<ModuleOp> src);
 
-  Linker(const LinkerConfig &config, MLIRContext *context)
-      : config(config), context(context) {}
+  /// Perform linking and materialization in the destination module.
+  /// Returns the linked module.
+  OwningOpRef<ModuleOp> link(bool sortSymbols = false);
 
   MLIRContext *getContext() { return context; }
 
-  LogicalResult linkInModule(OwningOpRef<ModuleOp> src, unsigned flags = None);
-
-  unsigned getFlags() const;
-
-  // Infer how to link file from linker config
-  LinkFileConfig linkFileConfig(unsigned fileFlags = None) const;
-
-  /// The first file is linked without internalization and with the
-  /// OverrideFromSrc flag set
-  LinkFileConfig firstFileConfig(unsigned fileFlags = None) const;
-
-  OwningOpRef<ModuleOp> takeModule() { return std::move(composite); }
-
-  LogicalResult emitFileError(const Twine &fileName, const Twine &message) {
-    return emitError("Error processing file '" + fileName + "': " + message);
-  }
-
-  LogicalResult emitError(const Twine &message) {
-    return mlir::emitError(UnknownLoc::get(context), message);
-  }
+  LogicalResult emitFileError(const Twine &fileName, const Twine &message);
+  LogicalResult emitError(const Twine &message);
 
 private:
-  const LinkerConfig &config;
+  /// Setup the linker based on the first module
+  LogicalResult initializeLinker(ModuleOp src);
+
+  /// Obtain the linker interface for the given module
+  ModuleLinkerInterface *getModuleLinkerInterface(ModuleOp op);
+
+  /// Return the flags controlling the linker behavior for the current module
+  unsigned getFlags() const;
+
+  /// Preprocess the given module before linking with the given flags
+  LogicalResult process(ModuleOp src, unsigned flags);
+
+  /// The context used for the linker
   MLIRContext *context;
+
+  /// The options controlling the linker behavior
+  LinkerOptions options;
+
+  /// The composti module that will contain the linked result
   OwningOpRef<ModuleOp> composite;
+
+  /// Modules registry used if `keepModulesAlive` is true
+  std::vector<OwningOpRef<ModuleOp>> modules;
 };
 
 } // namespace mlir::link
