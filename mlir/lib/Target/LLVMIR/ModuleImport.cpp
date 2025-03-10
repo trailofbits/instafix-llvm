@@ -1043,7 +1043,8 @@ ModuleImport::convertGlobalCtorsAndDtors(llvm::GlobalVariable *globalVar) {
 
     // GlobalCtorsOps and GlobalDtorsOps do not support non-null data fields.
     if (!data->isNullValue())
-      return failure();
+      emitError(mlirModule.getLoc()) << "GlobalCtorsOps and GlobalDtorsOps do not support non-null data fields we are just ignoring it and going to continue";
+      //return failure();
 
     funcs.push_back(FlatSymbolRefAttr::get(context, func->getName()));
     priorities.push_back(priority->getValue().getZExtValue());
