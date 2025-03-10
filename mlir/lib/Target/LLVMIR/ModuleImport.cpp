@@ -1517,7 +1517,13 @@ LogicalResult ModuleImport::convertIntrinsic(llvm::CallInst *inst) {
     return success();
 
   Location loc = translateLoc(inst->getDebugLoc());
-  return emitError(loc) << "unhandled intrinsic: " << diag(*inst);
+
+  emitError(loc) << "unhandled intrinsic: " << diag(*inst);
+
+  auto rty = inst->getType();
+  auto result = builder.create<LLVM::UndefOp>(loc, convertType(rty));
+  mapValue(inst, result);
+  return success();
 }
 
 LogicalResult ModuleImport::convertInstruction(llvm::Instruction *inst) {
