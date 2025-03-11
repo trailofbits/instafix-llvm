@@ -2230,6 +2230,10 @@ ParseResult GlobalOp::parse(OpAsmParser &parser, OperationState &result) {
     result.addAttribute(getConstantAttrName(result.name),
                         parser.getBuilder().getUnitAttr());
 
+  if (succeeded(parser.parseOptionalKeyword("local_unnamed_addr"))) {
+    // TODO: do something real here
+  }
+
   StringAttr name;
   if (parser.parseSymbolName(name, getSymNameAttrName(result.name),
                              result.attributes) ||
