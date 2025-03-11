@@ -65,6 +65,9 @@ struct ConstantRangeAttrStorage : public AttributeStorage {
     return KeyTy(lower, upper);
   }
 
+  llvm::APInt getLower() const { return lower; }
+  llvm::APInt getUpper() const { return upper; }
+
   /// The parametric data held by the storage class.
   llvm::APInt lower;
   llvm::APInt upper;

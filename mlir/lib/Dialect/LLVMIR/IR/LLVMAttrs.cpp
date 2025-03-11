@@ -257,6 +257,14 @@ DIRecursiveTypeAttrInterface DISubprogramAttr::getRecSelf(DistinctAttr recId) {
 // ConstantRangeAttr
 //===----------------------------------------------------------------------===//
 
+llvm::APInt ConstantRangeAttr::getLower() const {
+  return getImpl()->getLower();
+}
+
+llvm::APInt ConstantRangeAttr::getUpper() const {
+  return getImpl()->getUpper();
+}
+
 Attribute ConstantRangeAttr::parse(AsmParser &parser, Type odsType) {
   llvm::SMLoc loc = parser.getCurrentLocation();
   IntegerType widthType;

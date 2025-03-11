@@ -1095,7 +1095,10 @@ def LLVM_TBAATagArrayAttr
 //===----------------------------------------------------------------------===//
 
 def LLVM_ConstantRangeAttr : LLVM_Attr<"ConstantRange", "constant_range"> {
-  let parameters = (ins "::llvm::APInt":$lower, "::llvm::APInt":$upper);
+    let parameters = (ins
+    "::llvm::APInt":$lower,
+    "::llvm::APInt":$upper
+  );
   let summary = "A range of two integers, corresponding to LLVM's ConstantRange";
   let description = [{
     A pair of two integers, mapping to the ConstantRange structure in LLVM IR,
@@ -1117,6 +1120,15 @@ def LLVM_ConstantRangeAttr : LLVM_Attr<"ConstantRange", "constant_range"> {
       return $_get($_ctxt, ::llvm::APInt(bitWidth, lower), ::llvm::APInt(bitWidth, upper));
     }]>
   ];
+  /*let extraClassDeclaration = [{
+    ::llvm::APInt getLower() const {
+      return getImpl()->getLower();
+    }
+    ::llvm::APInt getUpper() const {
+      return getImpl()->getUpper();
+    }
+  }];*/
+  
 
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
