@@ -23,6 +23,57 @@
 namespace mlir {
 namespace LLVM {
 
+namespace detail {
+struct ConstantRangeAttrStorage : public AttributeStorage {
+  ConstantRangeAttrStorage(llvm::APInt lower, llvm::APInt upper)
+      : lower(lower), upper(upper) {}
+
+  /// The hash key for this storage is a pair of the integer and type params.
+  using KeyTy = std::pair<llvm::APInt, llvm::APInt>;
+
+  /// Define the comparison function for the key type.
+  bool operator==(const KeyTy &key) const {
+    if (lower.getBitWidth() != key.first.getBitWidth() ||
+        upper.getBitWidth() != key.second.getBitWidth()) {
+      return false;
+    }
+    return lower == key.first && upper == key.second;
+  }
+
+  /// Define a hash function for the key type.
+  /// Note: This isn't necessary because std::pair, unsigned, and Type all have
+  /// hash functions already available.
+  static llvm::hash_code hashKey(const KeyTy &key) {
+    return llvm::hash_combine(key.first, key.second);
+  }
+
+  /// Define a construction function for the key type.
+  /// Note: This isn't necessary because KeyTy can be directly constructed with
+  /// the given parameters.
+  static KeyTy getKey(llvm::APInt lower, llvm::APInt upper) {
+    return KeyTy(lower, upper);
+  }
+
+  /// Define a construction method for creating a new instance of this storage.
+  static ConstantRangeAttrStorage *construct(mlir::StorageUniquer::StorageAllocator &allocator, const KeyTy &key) {
+    return new (allocator.allocate<ConstantRangeAttrStorage>())
+        ConstantRangeAttrStorage(key.first, key.second);
+  }
+
+  /// Construct an instance of the key from this storage class.
+  KeyTy getAsKey() const {
+    return KeyTy(lower, upper);
+  }
+
+  llvm::APInt getLower() const { return lower; }
+  llvm::APInt getUpper() const { return upper; }
+
+  /// The parametric data held by the storage class.
+  llvm::APInt lower;
+  llvm::APInt upper;
+};
+}
+
 /// This class represents the base attribute for all debug info attributes.
 class DINodeAttr : public Attribute {
 public:
@@ -95,6 +146,9 @@ using linkage::Linkage;
 } // namespace mlir
 
 #include "mlir/Dialect/LLVMIR/LLVMAttrInterfaces.h.inc"
+
+
+
 
 #define GET_ATTRDEF_CLASSES
 #include "mlir/Dialect/LLVMIR/LLVMOpsAttrDefs.h.inc"

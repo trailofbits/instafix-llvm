@@ -157,7 +157,7 @@ static Type parseVectorType(AsmParser &parser) {
 /// error at `subtypesLoc` in case of failure.
 static LLVMStructType trySetStructBody(LLVMStructType type,
                                        ArrayRef<Type> subtypes, bool isPacked,
-                                       AsmParser &parser, SMLoc subtypesLoc) {
+                                       AsmParser &parser, SMLoc subtypesLoc, Location loc) {
   for (Type t : subtypes) {
     if (!LLVMStructType::isValidElementType(t)) {
       parser.emitError(subtypesLoc)
@@ -168,6 +168,16 @@ static LLVMStructType trySetStructBody(LLVMStructType type,
 
   if (succeeded(type.setBody(subtypes, isPacked)))
     return type;
+
+
+  long l = random();
+  std::string newid = type.getName().str() +  "." +std::to_string(l);
+  auto nty = LLVMStructType::getIdentifiedChecked(
+      [loc] { return emitError(loc); }, loc.getContext(), newid);
+  if (succeeded(nty.setBody(subtypes, isPacked)))
+    return nty;
+
+
 
   parser.emitError(subtypesLoc)
       << "identified type already used with a different body";
@@ -249,9 +259,12 @@ Type LLVMStructType::parse(AsmParser &parser) {
     if (!isIdentified)
       return LLVMStructType::getLiteralChecked([loc] { return emitError(loc); },
                                                loc.getContext(), {}, isPacked);
+   
+   
+
     auto type = LLVMStructType::getIdentifiedChecked(
         [loc] { return emitError(loc); }, loc.getContext(), name);
-    return trySetStructBody(type, {}, isPacked, parser, kwLoc);
+    return trySetStructBody(type, {}, isPacked, parser, kwLoc, loc);
   }
 
   // Parse subtypes. For identified structs, put the identifier of the struct on
@@ -274,7 +287,7 @@ Type LLVMStructType::parse(AsmParser &parser) {
         [loc] { return emitError(loc); }, loc.getContext(), subtypes, isPacked);
   auto type = LLVMStructType::getIdentifiedChecked(
       [loc] { return emitError(loc); }, loc.getContext(), name);
-  return trySetStructBody(type, subtypes, isPacked, parser, subtypesLoc);
+  return trySetStructBody(type, subtypes, isPacked, parser, subtypesLoc, loc);
 }
 
 /// Parses a type appearing inside another LLVM dialect-compatible type. This
