@@ -1241,8 +1241,7 @@ def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof",
     /// here.
     AliasOp getAlias(SymbolTableCollection &symbolTable);
   }];
-
-  }];
+  
   let assemblyFormat = "$global_name attr-dict `:` qualified(type($res))";
 
   let hasFolder = 1;
