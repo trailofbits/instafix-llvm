@@ -2415,6 +2415,6 @@ mlir::translateLLVMIRToModule(std::unique_ptr<llvm::Module> llvmModule,
     return {};
   if (failed(moduleImport.convertAliases()))
     return {};
-  moduleImport.convertTargetTriple();
+  
   return module;
 }
