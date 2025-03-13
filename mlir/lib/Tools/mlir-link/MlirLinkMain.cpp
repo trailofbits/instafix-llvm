@@ -33,7 +33,7 @@ using namespace llvm;
 
 /// This class is intended to manage the handling of command line options for
 /// creating a linker config. This is a singleton.
-struct LinkerCLOptions : public LinkerConfig {
+struct LinkerCLOptions : public LinkerOptions {
   /// Returns the command line option category for the linker options
   static cl::OptionCategory &getCategory() {
     static cl::OptionCategory linkerCategory("MLIR Linker Options");
@@ -69,9 +69,16 @@ struct LinkerCLOptions : public LinkerConfig {
   }
   StringRef outputSplitMarker() const { return outputSplitMarkerFlag; }
 
-  /// Creates and initializes a LinkerConfig from command line options.
+  /// Sort symbols in the output module.
+  LinkerCLOptions &sortSymbols(bool sort) {
+    sortSymbolsFlag = sort;
+    return *this;
+  }
+  bool shouldSortSymbols() const { return sortSymbolsFlag; }
+
+  /// Creates and initializes a LinkerOptions from command line options.
   /// These options are static but use ExternalStorage to initialize the
-  /// members of the LinkerConfig class.
+  /// members of the LinkerOptions class.
   LinkerCLOptions() {
     // Allow operation with no registered dialects.
     // This option is for convenience during testing only and discouraged in
@@ -80,11 +87,6 @@ struct LinkerCLOptions : public LinkerConfig {
         "allow-unregistered-dialect",
         cl::desc("Allow operation with no registered dialects"),
         cl::location(allowUnregisteredDialectsFlag), cl::init(false),
-        cl::cat(getCategory()));
-
-    static cl::opt<bool, true> internalizeLinkedSymbols(
-        "internalize", cl::desc("Internalize linked symbols"),
-        cl::location(internalizeLinkedSymbolsFlag), cl::init(false),
         cl::cat(getCategory()));
 
     static cl::opt<bool, true> linkOnlyNeeded(
@@ -108,6 +110,10 @@ struct LinkerCLOptions : public LinkerConfig {
             clSplitInputFile.setValue(kDefaultSplitMarker);
         }),
         cl::location(splitInputFileFlag), cl::init(""), cl::cat(getCategory()));
+
+    static cl::opt<bool, /*ExternalStorage=*/true> clSortSymbols(
+        "sort-symbols", cl::desc("Sort symbols in the output module"),
+        cl::location(sortSymbolsFlag), cl::init(false), cl::cat(getCategory()));
 
     static cl::opt<std::string, /*ExternalStorage=*/true> clOutputSplitMarker(
         "output-split-marker",
@@ -141,6 +147,9 @@ struct LinkerCLOptions : public LinkerConfig {
   /// Show the registered dialects before trying to load the input file.
   bool showDialectsFlag = false;
 
+  /// Sort symbols in the output module.
+  bool sortSymbolsFlag = false;
+
   /// Split the input file based on the given marker into chunks and process
   /// each chunk independently. Input is not split if empty.
   std::string splitInputFileFlag = "";
@@ -150,7 +159,7 @@ struct LinkerCLOptions : public LinkerConfig {
 };
 
 ManagedStatic<LinkerCLOptions> clOptionsConfig;
-const LinkerCLOptions &createLinkerConfigFromCLOptions() {
+const LinkerCLOptions &createLinkerOptionsFromCLOptions() {
   return *clOptionsConfig;
 }
 
@@ -158,7 +167,6 @@ const LinkerCLOptions &createLinkerConfigFromCLOptions() {
 /// This class encapsulates all the file handling logic for linker.
 class FileProcessor {
 public:
-  using FileConfig = Linker::LinkFileConfig;
   using OwningMemoryBuffer = std::unique_ptr<MemoryBuffer>;
 
   explicit FileProcessor(Linker &linker, raw_ostream &os, StringRef inMarker,
@@ -167,49 +175,39 @@ public:
 
   /// Process and link multiple input files
   LogicalResult linkFiles(const std::vector<std::string> fileNames) {
-
-    unsigned flags = linker.getFlags();
-    FileConfig config = linker.firstFileConfig(flags);
-
     for (StringRef fileName : fileNames) {
-      if (failed(processFile(fileName, config)))
+      if (failed(processFile(fileName)))
         return failure();
-
-      // Update config for subsequent files
-      config = linker.linkFileConfig(flags);
     }
 
     return success();
   }
 
 private:
-  /// Process a single file
-  LogicalResult processFile(StringRef fileName, FileConfig config) {
-    // Open input file
+  LogicalResult processFile(StringRef fileName) {
     std::string errorMessage;
     auto input = openInputFile(fileName, &errorMessage);
     if (!input)
       return linker.emitFileError(fileName, errorMessage);
 
     // Process each file chunk
-    if (failed(processFile(std::move(input), config)))
+    if (failed(processFile(std::move(input))))
       return linker.emitFileError(fileName, "Failed to process input file");
 
     return success();
   }
 
-  /// Process a single file buffer
-  LogicalResult processFile(OwningMemoryBuffer file, FileConfig config) {
+  /// Process a single input file, potentially containing multiple modules
+  LogicalResult processFile(OwningMemoryBuffer file) {
     return splitAndProcessBuffer(
         std::move(file),
-        [config, this](OwningMemoryBuffer chunk, raw_ostream & /* os */) {
-          return processFileChunk(std::move(chunk), config);
+        [this](OwningMemoryBuffer chunk, raw_ostream & /* os */) {
+          return processFileChunk(std::move(chunk));
         },
         os, inMarker, outMarker);
   }
 
-  /// Process a single input file, potentially containing multiple modules
-  LogicalResult processFileChunk(OwningMemoryBuffer buffer, FileConfig config) {
+  LogicalResult processFileChunk(OwningMemoryBuffer buffer) {
     auto sourceMgr = std::make_shared<SourceMgr>();
     sourceMgr->AddNewSourceBuffer(std::move(buffer), SMLoc());
 
@@ -219,7 +217,7 @@ private:
 
     // Parse the source file
     OwningOpRef<Operation *> op =
-        parseSourceFileForTool(sourceMgr, ctx, true /*insertImplicitModule*/);
+        parseSourceFileForTool(sourceMgr, ctx, /*insertImplicitModule=*/true);
     ctx->enableMultithreading(wasThreadingEnabled);
 
     if (!op)
@@ -232,8 +230,7 @@ private:
 
     // TBD: internalization
     OwningOpRef<ModuleOp> mod = cast<ModuleOp>(op.release());
-    // Link the parsed operation
-    return linker.linkInModule(std::move(mod), config.flags);
+    return linker.addModule(std::move(mod));
   }
 
   Linker &linker;
@@ -254,35 +251,35 @@ LogicalResult mlir::MlirLinkMain(int argc, char **argv,
   // Initialize LLVM infrastructure
   InitLLVM initLLVM(argc, argv);
 
-  const LinkerCLOptions &config = createLinkerConfigFromCLOptions();
+  const LinkerCLOptions &options = createLinkerOptionsFromCLOptions();
   LinkerCLOptions::setupAndParse(argc, argv);
 
-  if (config.shouldShowDialects())
+  if (options.shouldShowDialects())
     return printRegisteredDialects(registry);
 
   MLIRContext context(registry);
-  context.allowUnregisteredDialects(config.shouldAllowUnregisteredDialects());
+  context.allowUnregisteredDialects(options.shouldAllowUnregisteredDialects());
 
-  Linker linker(config, &context);
+  Linker linker(&context, options);
 
   // Prepare output file
   std::string errorMessage;
-  auto out = openOutputFile(config.outputFile, &errorMessage);
+  auto out = openOutputFile(options.outputFile, &errorMessage);
 
   if (!out) {
     return linker.emitError("Failed to open output file: " + errorMessage);
   }
 
-  StringRef inMarker = config.inputSplitMarker();
-  StringRef outMarker = config.outputSplitMarker();
+  StringRef inMarker = options.inputSplitMarker();
+  StringRef outMarker = options.outputSplitMarker();
 
   FileProcessor proc(linker, out->os(), inMarker, outMarker);
 
   // First add all the regular input files
-  if (failed(proc.linkFiles(config.inputFiles)))
+  if (failed(proc.linkFiles(options.inputFiles)))
     return failure();
 
-  OwningOpRef<ModuleOp> composite = linker.takeModule();
+  OwningOpRef<ModuleOp> composite = linker.link(options.shouldSortSymbols());
   if (failed(verify(composite.get(), true))) {
     return composite->emitError("verification after linking failed");
   }
