@@ -2618,6 +2618,7 @@ LogicalResult AliasOp::verify() {
   case Linkage::Internal:
   case Linkage::Private:
   case Linkage::Weak:
+  case Linkage::WeakODR:
   case Linkage::Linkonce:
   case Linkage::LinkonceODR:
   case Linkage::AvailableExternally:
