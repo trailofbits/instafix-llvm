@@ -2461,6 +2461,17 @@ LogicalResult GlobalOp::verifyRegions() {
 // LLVM::GlobalCtorsOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult checkGlobalXtorData(Operation *op, ArrayAttr data) {
+  if (data.empty())
+    return success();
+
+  if (llvm::all_of(data.getAsRange<Attribute>(), [](Attribute v) {
+        return isa<FlatSymbolRefAttr, ZeroAttr>(v);
+      }))
+    return success();
+  return op->emitError("data element must be symbol or #llvm.zero");
+}
+
 LogicalResult
 GlobalCtorsOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   for (Attribute ctor : getCtors()) {
@@ -2472,10 +2483,14 @@ GlobalCtorsOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 LogicalResult GlobalCtorsOp::verify() {
-  if (getCtors().size() != getPriorities().size())
-    return emitError(
-        "mismatch between the number of ctors and the number of priorities");
-  return success();
+  if (checkGlobalXtorData(*this, getData()).failed())
+    return failure();
+
+  if (getCtors().size() == getPriorities().size() &&
+      getCtors().size() == getData().size())
+    return success();
+  return emitError(
+      "ctors, priorities, and data must have the same number of elements");
 }
 
 //===----------------------------------------------------------------------===//
@@ -2493,10 +2508,14 @@ GlobalDtorsOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 LogicalResult GlobalDtorsOp::verify() {
-  if (getDtors().size() != getPriorities().size())
-    return emitError(
-        "mismatch between the number of dtors and the number of priorities");
-  return success();
+  if (checkGlobalXtorData(*this, getData()).failed())
+    return failure();
+
+  if (getDtors().size() == getPriorities().size() &&
+      getDtors().size() == getData().size())
+    return success();
+  return emitError(
+      "dtors, priorities, and data must have the same number of elements");
 }
 
 //===----------------------------------------------------------------------===//
