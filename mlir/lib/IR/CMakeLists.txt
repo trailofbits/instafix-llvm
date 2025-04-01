@@ -66,6 +66,7 @@ add_mlir_library(MLIRIR
   MLIRSideEffectInterfacesIncGen
   MLIRSymbolInterfacesIncGen
   MLIRTensorEncodingIncGen
+  MLIRLLVMInterfacesIncGen
 
   LINK_LIBS PUBLIC
   MLIRSupport

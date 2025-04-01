@@ -1093,8 +1093,9 @@ def LLVM_TBAATagArrayAttr
 //===----------------------------------------------------------------------===//
 // ConstantRangeAttr
 //===----------------------------------------------------------------------===//
+
 def LLVM_ConstantRangeAttr : LLVM_Attr<"ConstantRange", "constant_range"> {
-  let parameters = (ins
+    let parameters = (ins
     "::llvm::APInt":$lower,
     "::llvm::APInt":$upper
   );
@@ -1119,9 +1120,19 @@ def LLVM_ConstantRangeAttr : LLVM_Attr<"ConstantRange", "constant_range"> {
       return $_get($_ctxt, ::llvm::APInt(bitWidth, lower), ::llvm::APInt(bitWidth, upper));
     }]>
   ];
+  /*let extraClassDeclaration = [{
+    ::llvm::APInt getLower() const {
+      return getImpl()->getLower();
+    }
+    ::llvm::APInt getUpper() const {
+      return getImpl()->getUpper();
+    }
+  }];*/
+  
 
   let hasCustomAssemblyFormat = 1;
   let genVerifyDecl = 1;
+  let genStorageClass = 0;
 }
 
 
