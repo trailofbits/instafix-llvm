@@ -19,6 +19,9 @@
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/LogicalResult.h"
 
 namespace mlir::link {
 
@@ -43,6 +46,9 @@ public:
 
   Operation *remapped(Operation *src) const;
 
+  LinkState nest(ModuleOp submod) const;
+  void updateState(const LinkState &submodState);
+
 private:
   IRMapping mapping;
   OpBuilder builder;
@@ -55,6 +61,14 @@ struct Conflict {
   bool hasConflict() const { return dst; }
 
   static Conflict noConflict(Operation *src) { return {nullptr, src}; }
+};
+
+
+enum ConflictResolution {
+  Ignore,
+  Import, 
+  RenameDst,
+  RenameSrc,
 };
 
 template <typename ConcreteType>
@@ -106,10 +120,12 @@ public:
   virtual Conflict findConflict(Operation *src) const = 0;
 
   /// Resolves a conflict between an existing operation and a new one.
-  virtual LogicalResult resolveConflict(Conflict pair) = 0;
+  virtual llvm::Expected<ConflictResolution> resolveConflict(Conflict pair) = 0;
 
   /// Records a non-conflicting operation for linking.
   virtual void registerForLink(Operation *op) = 0;
+
+  virtual llvm::LogicalResult applyResolution(Conflict pair, ConflictResolution resolution) = 0;
 
   /// Materialize new operation for the given conflict pair.
   virtual Operation *materialize(Operation *src, LinkState &state) const = 0;
@@ -129,6 +145,31 @@ public:
 
 protected:
   unsigned flags = LinkerFlags::None;
+};
+
+class UniqueableSymbolLinker: public SymbolLinkerInterface {
+public:
+
+using SymbolLinkerInterface::SymbolLinkerInterface;
+
+StringAttr getUniqueNameIn(SymbolTable &st, StringAttr name) const;
+
+void renameSymbolRefIn(Operation *op, StringAttr newName) const;
+
+LogicalResult renameRemappedUsersOf(Operation *op, StringAttr newName,
+                                      LinkState &state) const;
+
+LogicalResult link(LinkState &state) const override;
+
+mlir::Operation *materialize(mlir::Operation *src, LinkState &state) const override;
+
+llvm::LogicalResult applyResolution(link::Conflict pair, link::ConflictResolution resolution) override;
+
+void registerForLink(Operation *op) override;
+
+protected:
+  SetVector<Operation *> uniqued;
+  llvm::StringMap<Operation *> summary;
 };
 
 //===----------------------------------------------------------------------===//

@@ -37,6 +37,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
+#include "mlir/Linker/LinkerInterface.h"
 
 namespace llvm {
 class Type;
@@ -244,6 +245,30 @@ SmallVector<IntT> convertArrayToIndices(ArrayAttr attrs) {
 /// Register the `LLVMLinkerInterface` implementation of `LinkerInterface`
 /// within the LLVM dialect.
 void registerLinkerInterface(DialectRegistry &registry);
+
+
+
+class LLVMSymbolLinkerInterface : public link::UniqueableSymbolLinker {
+public:
+  using link::UniqueableSymbolLinker::UniqueableSymbolLinker;
+
+  bool canBeLinked(Operation *op) const override;
+
+  StringRef getSymbol(Operation *op) const override;
+
+  link::Conflict findConflict(Operation *src) const override;
+
+  bool isLinkNeeded(link::Conflict pair, bool forDependency) const override;
+
+  llvm::Expected<link::ConflictResolution> resolveConflict(link::Conflict pair) override;
+
+
+  LogicalResult initialize(ModuleOp src) override;
+
+
+
+  SmallVector<Operation *> dependencies(Operation *op) const override;
+};
 
 } // namespace LLVM
 } // namespace mlir

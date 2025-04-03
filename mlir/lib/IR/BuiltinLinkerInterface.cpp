@@ -16,21 +16,18 @@
 
 using namespace mlir;
 using namespace mlir::link;
+using namespace mlir::builtin;
 
 //===----------------------------------------------------------------------===//
 // BuiltinLinkerInterface
 //===----------------------------------------------------------------------===//
 
-class BuiltinLinkerInterface : public ModuleLinkerInterface {
-public:
-  using ModuleLinkerInterface::ModuleLinkerInterface;
-
-  LogicalResult initialize(ModuleOp src) override {
+  LogicalResult BuiltinLinkerInterface::initialize(ModuleOp src) {
     symbolLinkers = SymbolLinkerInterfaces(src.getContext());
     return symbolLinkers.initialize(src);
   }
 
-  LogicalResult summarize(ModuleOp src, unsigned flags) override {
+  LogicalResult BuiltinLinkerInterface::summarize(ModuleOp src, unsigned flags) {
     WalkResult result = src.walk([&](Operation *op) {
       if (op == src)
         return WalkResult::advance();
@@ -43,8 +40,8 @@ public:
     return failure(result.wasInterrupted());
   }
 
-  LogicalResult summarize(Operation *op, unsigned flags, bool forDependency) {
-    auto linker = dyn_cast<SymbolLinkerInterface>(op->getDialect());
+  LogicalResult BuiltinLinkerInterface::summarize(Operation *op, unsigned flags, bool forDependency) {
+    auto* linker = dyn_cast<SymbolLinkerInterface>(op->getDialect());
     if (!linker)
       return success();
 
@@ -58,7 +55,11 @@ public:
       return success();
 
     if (conflict.hasConflict()) {
-      if (linker->resolveConflict(conflict).failed())
+      auto maybeResolution = linker->resolveConflict(conflict);
+      if (maybeResolution.takeError())
+        return failure();
+
+      if (linker->applyResolution(conflict, maybeResolution.get()).failed())
         return failure();
     } else {
       linker->registerForLink(op);
@@ -72,18 +73,14 @@ public:
     return success();
   }
 
-  LogicalResult link(LinkState &state) const override {
+  LogicalResult BuiltinLinkerInterface::link(LinkState &state) const {
     return symbolLinkers.link(state);
   }
 
-  OwningOpRef<ModuleOp> createCompositeModule(ModuleOp src) override {
+  OwningOpRef<ModuleOp> BuiltinLinkerInterface::createCompositeModule(ModuleOp src) {
     return ModuleOp::create(
         FileLineColLoc::get(src.getContext(), "composite", 0, 0));
   }
-
-private:
-  SymbolLinkerInterfaces symbolLinkers;
-};
 
 //===----------------------------------------------------------------------===//
 // registerLinkerInterface
