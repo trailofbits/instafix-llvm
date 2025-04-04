@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Linker/LinkerInterface.h"
+#include "mlir/IR/BuiltinOps.h"
 
 #define DEBUG_TYPE "mlir-linker-interface"
 
@@ -39,4 +40,16 @@ Operation *LinkState::getDestinationOp() const {
 
 Operation *LinkState::remapped(Operation *src) const {
   return mapping.lookupOrNull(src);
+}
+
+
+LinkState LinkState::nest(ModuleOp submod) const {
+  assert(submod->getParentOfType<mlir::ModuleOp>().getOperation() == getDestinationOp() && "Submodule should be directly nested in the current state");
+  LinkState submodState(submod);
+  submodState.mapping = mapping;
+  return submodState;
+}
+
+void LinkState::updateState(const LinkState &submodState) {
+  mapping = submodState.mapping;
 }
