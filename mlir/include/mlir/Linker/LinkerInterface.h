@@ -43,6 +43,9 @@ public:
 
   Operation *remapped(Operation *src) const;
 
+  LinkState nest(ModuleOp submod) const;
+  void updateState(const LinkState &submodState);
+
 private:
   IRMapping mapping;
   OpBuilder builder;
