@@ -46,7 +46,9 @@ Operation *LinkState::remapped(Operation *src) const {
 }
 
 LinkState LinkState::nest(ModuleOp submod) const {
-  assert(submod->getParentOfType<mlir::ModuleOp>().getOperation() == getDestinationOp() && "Submodule should be directly nested in the current state");
+  assert(submod->getParentOfType<mlir::ModuleOp>().getOperation() ==
+             getDestinationOp() &&
+         "Submodule should be directly nested in the current state");
   LinkState submodState(submod);
   submodState.mapping = mapping;
   return submodState;
@@ -54,7 +56,7 @@ LinkState LinkState::nest(ModuleOp submod) const {
 
 void LinkState::updateState(const LinkState &substate) {
   mapping = substate.mapping;
-} 
+}
 
 //===----------------------------------------------------------------------===//
 // SymbolAttrLinkerInterface
@@ -179,25 +181,31 @@ SymbolAttrLinkerInterface::dependencies(Operation *op) const {
   return result;
 }
 
+LogicalResult
+SymbolAttrLinkerInterface::resolveConflict(Conflict pair,
+                                           ConflictResolution resolution) {
 
-  LogicalResult SymbolAttrLinkerInterface::resolveConflict(Conflict pair)  {
-    if (failed(this->verifyLinkageCompatibility(pair)))
-        return failure();
-    ConflictResolution resolution = this->getConflictResolution(pair);
-    switch (resolution) {
-    case ConflictResolution::LinkFromSrc:
-      registerForLink(pair.src);
-      return success();
-    case ConflictResolution::LinkFromDst:
-      return success();
-    case ConflictResolution::LinkFromBothAndRenameDst:
-      uniqued.insert(pair.dst);
-      registerForLink(pair.src);
-      return success();
-    case ConflictResolution::LinkFromBothAndRenameSrc:
-      uniqued.insert(pair.src);
-      return success();
-    }
-
-    llvm_unreachable("unimplemented conflict resolution");
+  switch (resolution) {
+  case ConflictResolution::LinkFromSrc:
+    registerForLink(pair.src);
+    return success();
+  case ConflictResolution::LinkFromDst:
+    return success();
+  case ConflictResolution::LinkFromBothAndRenameDst:
+    uniqued.insert(pair.dst);
+    registerForLink(pair.src);
+    return success();
+  case ConflictResolution::LinkFromBothAndRenameSrc:
+    uniqued.insert(pair.src);
+    return success();
   }
+
+  llvm_unreachable("unimplemented conflict resolution");
+}
+
+LogicalResult SymbolAttrLinkerInterface::resolveConflict(Conflict pair) {
+  if (failed(this->verifyLinkageCompatibility(pair)))
+    return failure();
+  ConflictResolution resolution = this->getConflictResolution(pair);
+  return resolveConflict(pair, resolution);
+}

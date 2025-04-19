@@ -167,6 +167,8 @@ public:
   /// Resolves a conflict between an existing operation and a new one.
   LogicalResult resolveConflict(Conflict pair) override;
 
+  virtual LogicalResult resolveConflict(Conflict pair, ConflictResolution resolution);
+
   /// Gets the conflict resolution for a given conflict
   virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
 
