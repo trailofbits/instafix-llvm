@@ -647,6 +647,16 @@ LogicalResult ModuleImport::convertGlobals() {
   return success();
 }
 
+LogicalResult ModuleImport::convertAliases() {
+  for (llvm::GlobalAlias &alias : llvmModule->aliases()) {
+    if (failed(convertAlias(&alias))) {
+      return emitError(UnknownLoc::get(context))
+             << "unhandled global alias: " << diag(alias);
+    }
+  }
+  return success();
+}
+
 LogicalResult ModuleImport::convertDataLayout() {
   Location loc = mlirModule.getLoc();
   DataLayoutImporter dataLayoutImporter(context, llvmModule->getDataLayout());
@@ -947,6 +957,38 @@ ModuleImport::getOrCreateNamelessSymbolName(llvm::GlobalVariable *globalVar) {
   return symbolRef;
 }
 
+LogicalResult ModuleImport::convertAlias(llvm::GlobalAlias *alias) {
+  // Insert the global after the last one or at the start of the module.
+  OpBuilder::InsertionGuard guard(builder);
+  if (!aliasInsertionOp)
+    builder.setInsertionPointToStart(mlirModule.getBody());
+  else
+    builder.setInsertionPointAfter(aliasInsertionOp);
+
+  Type type = convertType(alias->getValueType());
+  AliasOp aliasOp = builder.create<AliasOp>(
+      mlirModule.getLoc(), type, convertLinkageFromLLVM(alias->getLinkage()),
+      alias->getName(),
+      /*dso_local=*/alias->isDSOLocal(),
+      /*thread_local=*/alias->isThreadLocal(),
+      /*attrs=*/ArrayRef<NamedAttribute>());
+  aliasInsertionOp = aliasOp;
+
+  clearRegionState();
+  Block *block = builder.createBlock(&aliasOp.getInitializerRegion());
+  setConstantInsertionPointToStart(block);
+  FailureOr<Value> initializer = convertConstantExpr(alias->getAliasee());
+  if (failed(initializer))
+    return failure();
+  builder.create<ReturnOp>(aliasOp.getLoc(), *initializer);
+
+  if (alias->hasAtLeastLocalUnnamedAddr())
+    aliasOp.setUnnamedAddr(convertUnnamedAddrFromLLVM(alias->getUnnamedAddr()));
+  aliasOp.setVisibility_(convertVisibilityFromLLVM(alias->getVisibility()));
+
+  return success();
+}
+
 LogicalResult ModuleImport::convertGlobal(llvm::GlobalVariable *globalVar) {
   // Insert the global after the last one or at the start of the module.
   OpBuilder::InsertionGuard guard(builder);
@@ -1043,7 +1085,8 @@ ModuleImport::convertGlobalCtorsAndDtors(llvm::GlobalVariable *globalVar) {
 
     // GlobalCtorsOps and GlobalDtorsOps do not support non-null data fields.
     if (!data->isNullValue())
-      return failure();
+      emitError(mlirModule.getLoc()) << "GlobalCtorsOps and GlobalDtorsOps do not support non-null data fields we are just ignoring it and going to continue";
+      //return failure();
 
     funcs.push_back(FlatSymbolRefAttr::get(context, func->getName()));
     priorities.push_back(priority->getValue().getZExtValue());
@@ -1084,7 +1127,7 @@ ModuleImport::getConstantsToConvert(llvm::Constant *constant) {
     llvm::Constant *current = workList.back();
     // References of global objects are just pointers to the object. Avoid
     // walking the elements of these here.
-    if (isa<llvm::GlobalObject>(current)) {
+    if (isa<llvm::GlobalObject>(current) || isa<llvm::GlobalAlias>(current)) {
       orderedSet.insert(current);
       workList.pop_back();
       continue;
@@ -1177,6 +1220,14 @@ FailureOr<Value> ModuleImport::convertConstant(llvm::Constant *constant) {
           getOrCreateNamelessSymbolName(cast<llvm::GlobalVariable>(globalObj));
     else
       symbolRef = FlatSymbolRefAttr::get(context, globalName);
+    return builder.create<AddressOfOp>(loc, type, symbolRef).getResult();
+  }
+
+  // Convert global alias accesses.
+  if (auto *globalAliasObj = dyn_cast<llvm::GlobalAlias>(constant)) {
+    Type type = convertType(globalAliasObj->getType());
+    StringRef aliaseeName = globalAliasObj->getName();
+    FlatSymbolRefAttr symbolRef = FlatSymbolRefAttr::get(context, aliaseeName);
     return builder.create<AddressOfOp>(loc, type, symbolRef).getResult();
   }
 
@@ -1517,7 +1568,13 @@ LogicalResult ModuleImport::convertIntrinsic(llvm::CallInst *inst) {
     return success();
 
   Location loc = translateLoc(inst->getDebugLoc());
-  return emitError(loc) << "unhandled intrinsic: " << diag(*inst);
+
+  emitError(loc) << "unhandled intrinsic: " << diag(*inst);
+
+  auto rty = inst->getType();
+  auto result = builder.create<LLVM::UndefOp>(loc, convertType(rty));
+  mapValue(inst, result);
+  return success();
 }
 
 LogicalResult ModuleImport::convertInstruction(llvm::Instruction *inst) {
@@ -2356,6 +2413,8 @@ mlir::translateLLVMIRToModule(std::unique_ptr<llvm::Module> llvmModule,
     return {};
   if (failed(moduleImport.convertFunctions()))
     return {};
-
+  if (failed(moduleImport.convertAliases()))
+    return {};
+  
   return module;
 }
