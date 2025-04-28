@@ -249,9 +249,8 @@ Type LLVMStructType::parse(AsmParser &parser) {
     if (!isIdentified)
       return LLVMStructType::getLiteralChecked([loc] { return emitError(loc); },
                                                loc.getContext(), {}, isPacked);
-    auto type = LLVMStructType::getIdentifiedChecked(
-        [loc] { return emitError(loc); }, loc.getContext(), name);
-    return trySetStructBody(type, {}, isPacked, parser, kwLoc);
+    auto type = LLVMStructType::getUniquedIdentified(loc.getContext(), name, {}, isPacked);
+    return type;
   }
 
   // Parse subtypes. For identified structs, put the identifier of the struct on
@@ -272,9 +271,15 @@ Type LLVMStructType::parse(AsmParser &parser) {
   if (!isIdentified)
     return LLVMStructType::getLiteralChecked(
         [loc] { return emitError(loc); }, loc.getContext(), subtypes, isPacked);
-  auto type = LLVMStructType::getIdentifiedChecked(
-      [loc] { return emitError(loc); }, loc.getContext(), name);
-  return trySetStructBody(type, subtypes, isPacked, parser, subtypesLoc);
+  for (Type t : subtypes) {
+    if (!LLVMStructType::isValidElementType(t)) {
+      parser.emitError(subtypesLoc)
+          << "invalid LLVM structure element type: " << t;
+      return LLVMStructType();
+    }
+  }
+  auto type = LLVMStructType::getUniquedIdentified(loc.getContext(), name, subtypes, isPacked);
+  return type;
 }
 
 /// Parses a type appearing inside another LLVM dialect-compatible type. This
