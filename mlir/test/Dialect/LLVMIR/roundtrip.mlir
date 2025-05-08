@@ -1002,3 +1002,36 @@ llvm.func @intrinsic_call_arg_attrs_bundles(%arg0: i32) -> i32 {
   %0 = llvm.call_intrinsic "llvm.riscv.sha256sig0"(%arg0) ["adazdazd"()] {constant} : (i32 {llvm.signext}) -> (i32)
   llvm.return %0 : i32
 }
+
+llvm.mlir.global private @blockaddr_global() {addr_space = 0 : i32, dso_local} : !llvm.ptr {
+  %0 = llvm.blockaddress <function = @blockaddr_fn, tag = <id = 0>> : !llvm.ptr
+  llvm.return %0 : !llvm.ptr
+}
+
+// CHECK: llvm.mlir.global private @blockaddr_global() {{.*}}
+// CHECK-NEXT:   %{{.*}} = llvm.blockaddress <function = @blockaddr_fn, tag = <id = 0>> : !llvm.ptr
+// CHECK-NEXT:   llvm.return %{{.*}} : !llvm.ptr
+
+llvm.func @blockaddr_fn() {
+  llvm.br ^bb1
+^bb1:
+  llvm.blocktag <id = 0>
+  llvm.return
+}
+
+// CHECK-LABEL: llvm.func @blockaddr_fn
+// CHECK-NEXT:  llvm.br ^bb1
+// CHECK-NEXT:^bb1:
+// CHECK-NEXT:  llvm.blocktag <id = 0>
+
+llvm.func @callintrin_voidret(%arg0: vector<8xi8>, %arg1: vector<8xi8>, %arg2: vector<8xi8>, %arg3: !llvm.ptr) {
+  llvm.call_intrinsic "llvm.aarch64.neon.st3.v8i8.p0"(%arg0, %arg1, %arg2, %arg3) : (vector<8xi8>, vector<8xi8>, vector<8xi8>, !llvm.ptr) -> ()
+  llvm.return
+}
+llvm.func @llvm.aarch64.neon.st3.v8i8.p0(vector<8xi8>, vector<8xi8>, vector<8xi8>, !llvm.ptr)
+
+// CHECK-LABEL: llvm.func @callintrin_voidret
+// CHECK-NEXT: llvm.call_intrinsic "llvm.aarch64.neon.st3.v8i8.p0"(%arg0, %arg1, %arg2, %arg3) : (vector<8xi8>, vector<8xi8>, vector<8xi8>, !llvm.ptr) -> ()
+
+llvm.mlir.global internal thread_local unnamed_addr @myglobal(-1 : i32) {addr_space = 0 : i32, alignment = 4 : i64, dso_local} : i32
+// CHECK: llvm.mlir.global internal thread_local unnamed_addr @myglobal(-1 : i32) {addr_space = 0 : i32, alignment = 4 : i64, dso_local} : i32
