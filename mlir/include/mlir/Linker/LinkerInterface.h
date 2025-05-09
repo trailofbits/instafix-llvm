@@ -36,7 +36,8 @@ enum LinkerFlags {
 
 class LinkState {
 public:
-  LinkState(ModuleOp dst) : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()) {}
+  LinkState(ModuleOp dst)
+      : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()) {}
 
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
@@ -170,7 +171,8 @@ public:
   /// Resolves a conflict between an existing operation and a new one.
   LogicalResult resolveConflict(Conflict pair) override;
 
-  virtual LogicalResult resolveConflict(Conflict pair, ConflictResolution resolution);
+  virtual LogicalResult resolveConflict(Conflict pair,
+                                        ConflictResolution resolution);
 
   /// Gets the conflict resolution for a given conflict
   virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
