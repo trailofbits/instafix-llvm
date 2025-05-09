@@ -191,13 +191,13 @@ public:
              isAvailableExternallyLinkage(srcLinkage));
   }
 
-  LogicalResult verifyLinkageCompatibility(Conflict pair) const{
+  LogicalResult verifyLinkageCompatibility(Conflict pair) const {
     const DerivedLinkerInterface &derived = getDerived();
     assert(derived.canBeLinked(pair.src) && "expected linkable operation");
     assert(derived.canBeLinked(pair.dst) && "expected linkable operation");
 
     auto linkError = [&](const Twine &error) -> LogicalResult {
-        return pair.src->emitError(error) << " dst: " << pair.dst->getLoc();
+      return pair.src->emitError(error) << " dst: " << pair.dst->getLoc();
     };
 
     Linkage srcLinkage = derived.getLinkage(pair.src);
@@ -208,13 +208,14 @@ public:
 
     if (isAppendingLinkage(srcLinkage) && isAppendingLinkage(dstLinkage)) {
       if (srcUnnamedAddr != dstUnnamedAddr) {
-        return linkError("Appending variables with different unnamed_addr need to be linked");
+        return linkError("Appending variables with different unnamed_addr need "
+                         "to be linked");
       }
     }
     return success();
   }
 
-  ConflictResolution getConflictResolution(Conflict pair) const  {
+  ConflictResolution getConflictResolution(Conflict pair) const {
     const DerivedLinkerInterface &derived = getDerived();
     assert(derived.canBeLinked(pair.src) && "expected linkable operation");
     assert(derived.canBeLinked(pair.dst) && "expected linkable operation");
@@ -318,7 +319,6 @@ public:
   ConflictResolution getConflictResolution(Conflict pair) const override {
     return LinkerMixin::getConflictResolution(pair);
   }
-
 };
 
 } // namespace mlir::link

@@ -18,22 +18,23 @@ using namespace mlir::link;
 //===----------------------------------------------------------------------===//
 
 template <typename CloneFunc>
-Operation *cloneImpl(Operation *src, IRMapping &mapping, CloneFunc cloneFunc) {
-  assert(!mapping.contains(src));
+Operation *cloneImpl(Operation *src, std::shared_ptr<IRMapping> &mapping,
+                     CloneFunc cloneFunc) {
+  assert(!mapping->contains(src));
   Operation *dst = cloneFunc(src);
-  mapping.map(src, dst);
+  mapping->map(src, dst);
   return dst;
 }
 
 Operation *LinkState::clone(Operation *src) {
   return cloneImpl(src, mapping, [this](Operation *op) {
-    return builder.clone(*op, mapping);
+    return builder.clone(*op, *mapping);
   });
 }
 
 Operation *LinkState::cloneWithoutRegions(Operation *src) {
   return cloneImpl(src, mapping, [this](Operation *op) {
-    return builder.cloneWithoutRegions(*op, mapping);
+    return builder.cloneWithoutRegions(*op, *mapping);
   });
 }
 
@@ -42,20 +43,14 @@ Operation *LinkState::getDestinationOp() const {
 }
 
 Operation *LinkState::remapped(Operation *src) const {
-  return mapping.lookupOrNull(src);
+  return mapping->lookupOrNull(src);
 }
 
 LinkState LinkState::nest(ModuleOp submod) const {
   assert(submod->getParentOfType<mlir::ModuleOp>().getOperation() ==
              getDestinationOp() &&
          "Submodule should be directly nested in the current state");
-  LinkState submodState(submod);
-  submodState.mapping = mapping;
-  return submodState;
-}
-
-void LinkState::updateState(const LinkState &substate) {
-  mapping = substate.mapping;
+  return LinkState(submod, mapping);
 }
 
 //===----------------------------------------------------------------------===//
