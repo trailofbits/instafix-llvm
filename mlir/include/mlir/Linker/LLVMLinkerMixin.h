@@ -197,7 +197,7 @@ public:
     assert(derived.canBeLinked(pair.dst) && "expected linkable operation");
 
     auto linkError = [&](const Twine &error) -> LogicalResult {
-        return pair.src->emitError(error) << " dst: " << pair.dst->getLoc();
+      return pair.src->emitError(error) << " dst: " << pair.dst->getLoc();
     };
 
     Linkage srcLinkage = derived.getLinkage(pair.src);
@@ -208,7 +208,8 @@ public:
 
     if (isAppendingLinkage(srcLinkage) && isAppendingLinkage(dstLinkage)) {
       if (srcUnnamedAddr != dstUnnamedAddr) {
-        return linkError("Appending variables with different unnamed_addr need to be linked");
+        return linkError("Appending variables with different unnamed_addr need "
+                         "to be linked");
       }
     }
     return success();
@@ -318,7 +319,6 @@ public:
   ConflictResolution getConflictResolution(Conflict pair) const override {
     return LinkerMixin::getConflictResolution(pair);
   }
-
 };
 
 } // namespace mlir::link

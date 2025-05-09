@@ -18,7 +18,8 @@ using namespace mlir::link;
 //===----------------------------------------------------------------------===//
 
 template <typename CloneFunc>
-Operation *cloneImpl(Operation *src, std::shared_ptr<IRMapping> &mapping, CloneFunc cloneFunc) {
+Operation *cloneImpl(Operation *src, std::shared_ptr<IRMapping> &mapping,
+                     CloneFunc cloneFunc) {
   assert(!mapping->contains(src));
   Operation *dst = cloneFunc(src);
   mapping->map(src, dst);
