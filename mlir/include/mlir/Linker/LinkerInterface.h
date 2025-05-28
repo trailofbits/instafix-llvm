@@ -42,6 +42,14 @@ public:
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
 
+  template <typename OpTy, typename... Args>
+  Operation *remap(Operation *src, Args &&...args) {
+    assert(!mapping->contains(src));
+    auto dst = builder.create<OpTy>(src->getLoc(), std::forward<Args>(args)...);
+    mapping->map(src, dst.getOperation());
+    return dst;
+  }
+
   Operation *getDestinationOp() const;
 
   Operation *remapped(Operation *src) const;
@@ -175,7 +183,7 @@ public:
                                         ConflictResolution resolution);
 
   /// Gets the conflict resolution for a given conflict
-  virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
+  virtual ConflictResolution getConflictResolution(Conflict pair) = 0;
 
   virtual LogicalResult verifyLinkageCompatibility(Conflict pair) const = 0;
 
