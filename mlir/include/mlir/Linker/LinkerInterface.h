@@ -19,6 +19,7 @@
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/Error.h"
 
 namespace mlir::link {
 
@@ -42,6 +43,10 @@ public:
   Operation *getDestinationOp() const;
 
   Operation *remapped(Operation *src) const;
+
+  LinkState nest(ModuleOp submod) const;
+
+  void updateState(const LinkState &substate);
 
 private:
   IRMapping mapping;
@@ -136,6 +141,12 @@ protected:
 //===----------------------------------------------------------------------===//
 // SymbolAttrLinkerInterface
 //===----------------------------------------------------------------------===//
+enum class ConflictResolution {
+  LinkFromSrc,
+  LinkFromDst,
+  LinkFromBothAndRenameDst,
+  LinkFromBothAndRenameSrc,
+};
 
 class SymbolAttrLinkerInterface : public SymbolLinkerInterface {
 public:
@@ -152,6 +163,16 @@ public:
 
   /// Records a non-conflicting operation for linking.
   void registerForLink(Operation *op) override;
+
+  /// Resolves a conflict between an existing operation and a new one.
+  LogicalResult resolveConflict(Conflict pair) override;
+
+  virtual LogicalResult resolveConflict(Conflict pair, ConflictResolution resolution);
+
+  /// Gets the conflict resolution for a given conflict
+  virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
+
+  virtual LogicalResult verifyLinkageCompatibility(Conflict pair) const = 0;
 
   /// Dependencies of the given operation required to be linked.
   SmallVector<Operation *> dependencies(Operation *op) const override;

@@ -14,7 +14,6 @@
 #define MLIR_DIALECT_LLVMIR_LLVMINTERFACES_H_
 
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
-
 namespace mlir {
 
 class LLVMTypeConverter;

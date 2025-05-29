@@ -453,7 +453,7 @@ public:
   std::string ClangIRIdiomRecognizerOpts;
   std::string ClangIRLibOptOpts;
 
-  frontend::MLIRDialectKind MLIRTargetDialect;
+  frontend::MLIRDialectKind MLIRTargetDialect = frontend::MLIR_CORE;
 
   /// The input kind, either specified via -x argument or deduced from the input
   /// file name.
