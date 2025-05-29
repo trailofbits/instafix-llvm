@@ -137,13 +137,6 @@ static UnnamedAddr getMinUnnamedAddr(UnnamedAddr lhs, UnnamedAddr rhs) {
 // LLVMLinkerMixin
 //===----------------------------------------------------------------------===//
 
-enum class ConflictResolution {
-  LinkFromSrc,
-  LinkFromDst,
-  LinkFromBothAndRenameDst,
-  LinkFromBothAndRenameSrc,
-};
-
 template <typename DerivedLinkerInterface>
 class LLVMLinkerMixin {
   const DerivedLinkerInterface &getDerived() const {
@@ -198,7 +191,7 @@ public:
              isAvailableExternallyLinkage(srcLinkage));
   }
 
-  LogicalResult verifyLinkageCompatibility(Conflict pair) {
+  LogicalResult verifyLinkageCompatibility(Conflict pair) const{
     const DerivedLinkerInterface &derived = getDerived();
     assert(derived.canBeLinked(pair.src) && "expected linkable operation");
     assert(derived.canBeLinked(pair.dst) && "expected linkable operation");
@@ -221,7 +214,7 @@ public:
     return success();
   }
 
-  ConflictResolution resolveConflict(Conflict pair) {
+  ConflictResolution getConflictResolution(Conflict pair) const  {
     const DerivedLinkerInterface &derived = getDerived();
     assert(derived.canBeLinked(pair.src) && "expected linkable operation");
     assert(derived.canBeLinked(pair.dst) && "expected linkable operation");
@@ -318,28 +311,14 @@ public:
     return LinkerMixin::isLinkNeeded(pair, forDependency);
   }
 
-  LogicalResult resolveConflict(Conflict pair) override {
-    if (failed(LinkerMixin::verifyLinkageCompatibility(pair)))
-        return failure();
-    ConflictResolution resolution = LinkerMixin::resolveConflict(pair);
-
-    switch (resolution) {
-    case ConflictResolution::LinkFromSrc:
-      registerForLink(pair.src);
-      return success();
-    case ConflictResolution::LinkFromDst:
-      return success();
-    case ConflictResolution::LinkFromBothAndRenameDst:
-      uniqued.insert(pair.dst);
-      registerForLink(pair.src);
-      return success();
-    case ConflictResolution::LinkFromBothAndRenameSrc:
-      uniqued.insert(pair.src);
-      return success();
-    }
-
-    llvm_unreachable("unimplemented conflict resolution");
+  LogicalResult verifyLinkageCompatibility(Conflict pair) const override {
+    return LinkerMixin::verifyLinkageCompatibility(pair);
   }
+
+  ConflictResolution getConflictResolution(Conflict pair) const override {
+    return LinkerMixin::getConflictResolution(pair);
+  }
+
 };
 
 } // namespace mlir::link
