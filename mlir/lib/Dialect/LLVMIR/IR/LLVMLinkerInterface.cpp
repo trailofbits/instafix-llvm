@@ -70,8 +70,11 @@ bool  mlir::LLVM::LLVMSymbolLinkerInterface::isDeclaration(Operation *op) {
 }
 
 unsigned  mlir::LLVM::LLVMSymbolLinkerInterface::getBitWidth(Operation *op) {
-  if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
-    return gv.getType().getIntOrFloatBitWidth();
+  if (auto gv = dyn_cast<LLVM::GlobalOp>(op)) {
+    auto type = gv.getType();
+    auto dataLayout = DataLayout::closest(op);
+    return dataLayout.getTypeSizeInBits(type);
+  }
   llvm_unreachable("unexpected operation");
 }
 
