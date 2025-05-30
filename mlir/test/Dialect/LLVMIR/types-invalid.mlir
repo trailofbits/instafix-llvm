@@ -1,4 +1,5 @@
 // RUN: mlir-opt --allow-unregistered-dialect -split-input-file -verify-diagnostics %s
+// REQUIRES: modified-named-struct-type-parser
 
 func.func @array_of_void() {
   // expected-error @+1 {{invalid array element type}}

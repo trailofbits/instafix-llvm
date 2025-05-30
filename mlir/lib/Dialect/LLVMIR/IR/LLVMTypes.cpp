@@ -438,6 +438,22 @@ LLVMStructType LLVMStructType::getIdentifiedChecked(
   return Base::getChecked(emitError, context, name, /*opaque=*/false);
 }
 
+LLVMStructType LLVMStructType::getUniquedIdentified(MLIRContext *context,
+                                                StringRef name,
+                                                ArrayRef<Type> elements,
+                                                bool isPacked) {
+  std::string stringName = name.str();
+  unsigned counter = 1;
+  do {
+    auto type = LLVMStructType::getIdentified(context, stringName);
+    if (failed(type.setBody(elements, isPacked))) {
+      stringName = (Twine(name) + "." + Twine(counter++)).str();
+      continue;
+    }
+    return type;
+  } while (true);
+}
+
 LLVMStructType LLVMStructType::getNewIdentified(MLIRContext *context,
                                                 StringRef name,
                                                 ArrayRef<Type> elements,

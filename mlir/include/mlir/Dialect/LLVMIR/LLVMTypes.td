@@ -199,6 +199,10 @@ def LLVMStructType : LLVMType<"LLVMStruct", "struct", [
                                            ArrayRef<Type> elements,
                                            bool isPacked = false);
 
+    static LLVMStructType getUniquedIdentified(MLIRContext *context, StringRef name,
+                                           ArrayRef<Type> elements,
+                                           bool isPacked = false);
+
     /// Gets or creates a literal struct with the given body in the provided
     /// context.
     static LLVMStructType getLiteral(MLIRContext *context, ArrayRef<Type> types,
