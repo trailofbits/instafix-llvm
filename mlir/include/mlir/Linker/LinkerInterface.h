@@ -20,6 +20,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Error.h"
+#include <memory>
 
 namespace mlir::link {
 
@@ -35,7 +36,8 @@ enum LinkerFlags {
 
 class LinkState {
 public:
-  LinkState(ModuleOp dst) : builder(dst.getBodyRegion()) {}
+  LinkState(ModuleOp dst)
+      : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()) {}
 
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
@@ -46,10 +48,12 @@ public:
 
   LinkState nest(ModuleOp submod) const;
 
-  void updateState(const LinkState &substate);
-
 private:
-  IRMapping mapping;
+  // Private constructor used by nest()
+  LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
+      : mapping(mapping), builder(dst.getBodyRegion()) {}
+
+  std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;
 };
 
@@ -167,7 +171,8 @@ public:
   /// Resolves a conflict between an existing operation and a new one.
   LogicalResult resolveConflict(Conflict pair) override;
 
-  virtual LogicalResult resolveConflict(Conflict pair, ConflictResolution resolution);
+  virtual LogicalResult resolveConflict(Conflict pair,
+                                        ConflictResolution resolution);
 
   /// Gets the conflict resolution for a given conflict
   virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
