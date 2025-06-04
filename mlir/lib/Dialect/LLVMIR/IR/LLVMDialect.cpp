@@ -2318,6 +2318,10 @@ static ParseResult parseCommonGlobalAndAlias(OpAsmParser &parser,
     result.addAttribute(OpType::getThreadLocal_AttrName(result.name),
                         parser.getBuilder().getUnitAttr());
 
+  if (succeeded(parser.parseOptionalKeyword("thread_local")))
+    result.addAttribute(OpType::getThreadLocal_AttrName(result.name),
+                        parser.getBuilder().getUnitAttr());
+
   // Parse optional UnnamedAddr, default to None.
   result.addAttribute(OpType::getUnnamedAddrAttrName(result.name),
                       parser.getBuilder().getI64IntegerAttr(
