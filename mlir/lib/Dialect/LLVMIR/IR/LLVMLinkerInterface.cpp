@@ -137,77 +137,131 @@ LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
                                              LinkState &state) const {
   auto derived = LinkerMixin::getDerived();
   if (isAppendingLinkage(derived.getLinkage(src))) {
-    auto dst = LinkerMixin::append.lookup(src);
-    return derived.appendGlobals(dst, src, state);
+    return derived.appendGlobals(derived.getSymbol(src), state);
   }
   return SymbolAttrLinkerInterface::materialize(src, state);
 }
 
-Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(Operation *dst,
-                                                          Operation *src,
+static std::pair<Attribute, Type>
+getAppendedArrayAttr(llvm::ArrayRef<mlir::Operation *> globs,
+                     LinkState &state) {
+  std::vector<Attribute> newValue;
+  // conservative estimate
+  newValue.reserve(globs.size());
+
+  for (auto op : globs) {
+    auto glob = dyn_cast<LLVM::GlobalOp>(op);
+    if (!glob)
+      llvm_unreachable("appending non-global variable");
+    // TODO: check that all element types match?
+
+    if (auto globValue =
+            dyn_cast_if_present<ArrayAttr>(glob.getValueOrNull())) {
+      newValue.insert(newValue.end(), globValue.begin(), globValue.end());
+    } else {
+      if (glob.getInitializer().empty()) {
+        // global is initialized and does not have an init region
+        // -> value attribute is not an ArrayAttr
+        llvm_unreachable("mismatched global variable value attributes");
+      }
+      llvm_unreachable(
+          "linking mixed definition via an attribute and init region NYI");
+    }
+  }
+  auto firstGV = mlir::cast<LLVM::GlobalOp>(globs.front());
+  auto elemType =
+      mlir::cast<LLVM::LLVMArrayType>(firstGV.getType()).getElementType();
+  return {ArrayAttr::get(firstGV.getContext(), newValue),
+          LLVM::LLVMArrayType::get(elemType, newValue.size())};
+}
+
+static std::pair<Attribute, Type>
+getAppendedDenseAttr(llvm::ArrayRef<mlir::Operation *> globs,
+                     LinkState &state) {
+  std::vector<char> newValue;
+  size_t numElems = 0;
+
+  for (auto op : globs) {
+    auto glob = dyn_cast<LLVM::GlobalOp>(op);
+    if (!glob)
+      llvm_unreachable("appending non-global variable");
+    // TODO: check that all element types match?
+
+    if (auto globValue =
+            dyn_cast_if_present<DenseElementsAttr>(glob.getValueOrNull())) {
+      auto data = globValue.getRawData();
+      newValue.insert(newValue.end(), data.begin(), data.end());
+      numElems += globValue.getNumElements();
+    } else {
+      if (glob.getInitializer().empty()) {
+        // global is initialized and does not have an init region
+        // -> value attribute is not a DenseAttr
+        llvm_unreachable("mismatched global variable value attributes");
+      }
+      llvm_unreachable(
+          "linking mixed definition via an attribute and init region NYI");
+    }
+  }
+  auto firstGV = mlir::cast<LLVM::GlobalOp>(globs.front());
+  auto elemType =
+      mlir::cast<LLVM::LLVMArrayType>(firstGV.getType()).getElementType();
+  auto newTensorType = RankedTensorType::get(numElems, elemType);
+  return {DenseElementsAttr::getFromRawBuffer(newTensorType, newValue),
+          LLVM::LLVMArrayType::get(elemType, numElems)};
+}
+
+static std::pair<Attribute, Type>
+getAppendedAttr(llvm::ArrayRef<mlir::Operation *> globs, LinkState &state) {
+  if (auto glob = dyn_cast<LLVM::GlobalOp>(globs.front())) {
+    if (isa_and_present<ArrayAttr>(glob.getValueOrNull()))
+      return getAppendedArrayAttr(globs, state);
+
+    if (isa_and_present<DenseElementsAttr>(glob.getValueOrNull()))
+      return getAppendedDenseAttr(globs, state);
+
+    llvm_unreachable("unknown init attr kind");
+  }
+  llvm_unreachable("appending operation that isn't a global");
+}
+
+static std::pair<Region, Type>
+getAppendedBody(llvm::ArrayRef<mlir::Operation *>, LinkState &state) {
+  llvm_unreachable("NYI");
+}
+
+Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
                                                           LinkState &state) {
-  auto dstGV = dyn_cast<LLVM::GlobalOp>(dst);
-  auto srcGV = dyn_cast<LLVM::GlobalOp>(src);
-  if (!srcGV || !dstGV)
+  const auto &globs = Mixin::append.lookup(glob);
+  auto lastGV = dyn_cast<LLVM::GlobalOp>(globs.back());
+  if (!lastGV)
     llvm_unreachable("unexpected operation");
 
-  if (isDeclaration(dst))
-    return state.clone(src);
+  // Src ops that are declarations are ignored in favour of dst operation
+  // This mimics the behaviour of linkAppendingVarProto in llvm-link
+  if (globs.size() == 1)
+    return state.clone(globs.front());
 
-  auto srcAttrs = srcGV->getAttrs();
+  auto lastAttrs = lastGV->getAttrs();
   std::vector<NamedAttribute> attrs;
-  attrs.reserve(srcAttrs.size());
+  attrs.reserve(lastAttrs.size());
 
-  auto valueAttrName = srcGV.getValueAttrName();
-  auto typeAttrName = srcGV.getGlobalTypeAttrName();
-  for (auto attr : srcGV->getAttrs()) {
+  auto valueAttrName = lastGV.getValueAttrName();
+  auto typeAttrName = lastGV.getGlobalTypeAttrName();
+  for (auto attr : lastGV->getAttrs()) {
     auto attrName = attr.getName();
     if (attrName != typeAttrName && attrName != valueAttrName)
       attrs.push_back(attr);
   }
 
-  if (auto dstVal =
-          mlir::dyn_cast_if_present<ArrayAttr>(dstGV.getValueOrNull())) {
-    auto srcVal = mlir::dyn_cast_if_present<ArrayAttr>(dstGV.getValueOrNull());
-    if (!srcVal)
-      llvm_unreachable("mismatech value attry type of appending variables");
-
-    auto newVal = dstVal.getValue().vec();
-    newVal.reserve(dstVal.size() + srcVal.size());
-    newVal.insert(newVal.end(), srcVal.begin(), srcVal.end());
-    auto newValAttr = ArrayAttr::get(dstVal.getContext(), newVal);
-
-    auto dstType = mlir::cast<LLVM::LLVMArrayType>(dstGV.getType());
-    auto srcType = mlir::cast<LLVM::LLVMArrayType>(srcGV.getType());
-
-    attrs.emplace_back(typeAttrName, TypeAttr::get(LLVM::LLVMArrayType::get(
-                                         dstType.getElementType(),
-                                         dstType.getNumElements() +
-                                             srcType.getNumElements())));
-    attrs.emplace_back(valueAttrName, newValAttr);
-    return state.remap<LLVM::GlobalOp>(src, TypeRange(), ValueRange(), attrs);
-  }
-
-  if (auto dstVal = mlir::dyn_cast<DenseElementsAttr>(dstGV.getValueOrNull())) {
-    auto srcVal = mlir::dyn_cast<DenseElementsAttr>(srcGV.getValueOrNull());
-    if (!srcVal)
-      llvm_unreachable("mismatched value attr type of appending variables");
-
-    auto srcData = srcVal.getRawData();
-    auto dstData = dstVal.getRawData();
-    std::vector<char> newData(dstData.begin(), dstData.end());
-    newData.insert(newData.end(), srcData.begin(), srcData.end());
-
-    auto numElems =
-        srcVal.getType().getNumElements() + dstVal.getType().getNumElements();
-    auto elemType = srcVal.getElementType();
-    auto newTensorType = RankedTensorType::get(numElems, elemType);
-
-    attrs.emplace_back(valueAttrName, DenseElementsAttr::getFromRawBuffer(
-                                          newTensorType, newData));
-    attrs.emplace_back(typeAttrName, TypeAttr::get(LLVM::LLVMArrayType::get(
-                                         elemType, numElems)));
-    return state.remap<LLVM::GlobalOp>(src, TypeRange(), ValueRange(), attrs);
+  if (!lastGV.getInitializer().empty()) {
+    // append regions
+  } else {
+    auto [value, type] = getAppendedAttr(globs, state);
+    attrs.emplace_back(valueAttrName, value);
+    attrs.emplace_back(typeAttrName, TypeAttr::get(type));
+    // TODO: check that we are remapping the correct op
+    return state.remap<LLVM::GlobalOp>(globs.back(), TypeRange(), ValueRange(),
+                                       attrs);
   }
   llvm_unreachable("unknown value attribute type");
 }

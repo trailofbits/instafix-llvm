@@ -263,7 +263,12 @@ public:
     const bool dstIsDeclaration = isDeclarationForLinker(pair.dst);
 
     if (isAppendingLinkage(dstLinkage)) {
-      append.insert({pair.src, pair.dst});
+      auto &toAppend = append[derived.getSymbol(pair.src)];
+      if (toAppend.empty())
+        toAppend.push_back(pair.dst);
+      if (!derived.isDeclaration(pair.src)) {
+        toAppend.push_back(pair.src);
+      }
       return ConflictResolution::LinkFromSrc;
     }
 
@@ -323,7 +328,7 @@ public:
 
 protected:
   // Operations to append together
-  llvm::DenseMap<Operation *, Operation *> append;
+  llvm::StringMap<llvm::SmallVector<Operation *, 2>> append;
 };
 
 //===----------------------------------------------------------------------===//

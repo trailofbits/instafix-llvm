@@ -8,6 +8,9 @@ namespace LLVM {
 
 class LLVMSymbolLinkerInterface
     : public link::SymbolAttrLLVMLinkerInterface<LLVMSymbolLinkerInterface> {
+  using Base = link::SymbolAttrLLVMLinkerInterface<LLVMSymbolLinkerInterface>;
+  using Mixin = Base::LLVMLinkerMixin;
+
 public:
   LLVMSymbolLinkerInterface(Dialect *dialect);
 
@@ -24,8 +27,7 @@ public:
   static llvm::StringRef getSection(Operation *op);
   static uint32_t getAddressSpace(Operation *op);
   Operation *materialize(Operation *src, link::LinkState &state) const override;
-  static Operation *appendGlobals(Operation *dst, Operation *src,
-                                  link::LinkState &state);
+  Operation *appendGlobals(llvm::StringRef glob, link::LinkState &state);
 };
 
 } // namespace LLVM
