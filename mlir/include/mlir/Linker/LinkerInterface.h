@@ -42,14 +42,6 @@ public:
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
 
-  template <typename OpTy, typename... Args>
-  Operation *remap(Operation *src, Args &&...args) {
-    assert(!mapping->contains(src));
-    auto dst = builder.create<OpTy>(src->getLoc(), std::forward<Args>(args)...);
-    mapping->map(src, dst.getOperation());
-    return dst;
-  }
-
   Operation *getDestinationOp() const;
 
   Operation *remapped(Operation *src) const;
@@ -59,7 +51,7 @@ public:
 private:
   // Private constructor used by nest()
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
-      : mapping(mapping), builder(dst.getBodyRegion()) {}
+      : mapping(std::move(mapping)), builder(dst.getBodyRegion()) {}
 
   std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;

@@ -241,27 +241,18 @@ Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
   if (globs.size() == 1)
     return state.clone(globs.front());
 
-  auto lastAttrs = lastGV->getAttrs();
-  std::vector<NamedAttribute> attrs;
-  attrs.reserve(lastAttrs.size());
-
-  auto valueAttrName = lastGV.getValueAttrName();
-  auto typeAttrName = lastGV.getGlobalTypeAttrName();
-  for (auto attr : lastGV->getAttrs()) {
-    auto attrName = attr.getName();
-    if (attrName != typeAttrName && attrName != valueAttrName)
-      attrs.push_back(attr);
-  }
-
   if (!lastGV.getInitializer().empty()) {
     // append regions
   } else {
     auto [value, type] = getAppendedAttr(globs, state);
-    attrs.emplace_back(valueAttrName, value);
-    attrs.emplace_back(typeAttrName, TypeAttr::get(type));
-    // TODO: check that we are remapping the correct op
-    return state.remap<LLVM::GlobalOp>(globs.back(), TypeRange(), ValueRange(),
-                                       attrs);
+
+    auto valueAttrName = lastGV.getValueAttrName();
+    auto typeAttrName = lastGV.getGlobalTypeAttrName();
+
+    auto cloned = state.clone(globs.back());
+    cloned->setAttr(valueAttrName, value);
+    cloned->setAttr(typeAttrName, TypeAttr::get(type));
+    return cloned;
   }
   llvm_unreachable("unknown value attribute type");
 }
