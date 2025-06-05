@@ -224,9 +224,74 @@ getAppendedAttr(llvm::ArrayRef<mlir::Operation *> globs, LinkState &state) {
   llvm_unreachable("appending operation that isn't a global");
 }
 
-static std::pair<Region, Type>
-getAppendedBody(llvm::ArrayRef<mlir::Operation *>, LinkState &state) {
-  llvm_unreachable("NYI");
+static Operation *
+getAppendedOpWithInitRegion(llvm::ArrayRef<mlir::Operation *> globs,
+                            LinkState &state) {
+  auto endGV = dyn_cast<LLVM::GlobalOp>(globs.back());
+  if (!endGV)
+    llvm_unreachable("unexpected operation");
+
+  auto targetGV = cast<LLVM::GlobalOp>(state.cloneWithoutRegions(globs.back()));
+  auto &targetRegion = targetGV.getInitializer();
+  // Without a block the builder does not know where to set the insertion point
+  targetRegion.emplaceBlock();
+
+  auto originalType = dyn_cast<LLVM::LLVMArrayType>(endGV.getType());
+  if (!originalType)
+    llvm_unreachable("unexpected global type");
+  auto elemType = originalType.getElementType();
+  size_t elemCount = 0;
+
+  IRMapping &mapping = state.getMapping();
+  auto builder = OpBuilder(targetRegion);
+  std::vector<Value> values;
+  std::vector<std::vector<int64_t>> positions;
+
+  for (auto globalOp : globs) {
+    auto glob = dyn_cast<LLVM::GlobalOp>(globalOp);
+    auto globType = dyn_cast<LLVM::LLVMArrayType>(glob.getType());
+    if (!globType || globType.getElementType() != elemType)
+      llvm_unreachable("appending globals with mismatched types");
+    for (auto &op : glob.getInitializer().getOps()) {
+      // skip ops that will be crated manually later
+      if (isa<LLVM::UndefOp, LLVM::ReturnOp, LLVM::InsertValueOp>(op))
+        continue;
+
+      Operation *cloned = builder.clone(op, mapping);
+      mapping.map(&op, cloned);
+      // LLVM dialect does not have multiple result operations
+      // zero result operation should not appear in this context
+      // unless its a return which we skip
+      Value clonedRes = cloned->getResult(0);
+      for (Operation *user : op.getUsers()) {
+        if (auto insertValue = dyn_cast<LLVM::InsertValueOp>(user)) {
+          llvm::ArrayRef<int64_t> currentPositions = insertValue.getPosition();
+          std::vector<int64_t> offsetPositions;
+          offsetPositions.reserve(positions.size());
+
+          for (auto pos : currentPositions) {
+            offsetPositions.push_back(pos + elemCount);
+          }
+          positions.push_back(std::move(offsetPositions));
+        }
+      }
+      values.push_back(clonedRes);
+    }
+    elemCount += globType.getNumElements();
+  }
+  Type resType = LLVM::LLVMArrayType::get(elemType, elemCount);
+  targetGV->setAttr(targetGV.getGlobalTypeAttrName(), TypeAttr::get(resType));
+
+  Value currentValue =
+      builder.create<LLVM::UndefOp>(targetGV.getLoc(), resType);
+  for (auto [idx, value] : llvm::enumerate(values)) {
+    currentValue = builder.create<LLVM::InsertValueOp>(
+        targetGV.getLoc(), currentValue, value, positions[idx]);
+  }
+
+  builder.create<LLVM::ReturnOp>(targetGV.getLoc(), currentValue);
+
+  return targetGV;
 }
 
 Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
@@ -242,7 +307,7 @@ Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
     return state.clone(globs.front());
 
   if (!lastGV.getInitializer().empty()) {
-    // append regions
+    return getAppendedOpWithInitRegion(globs, state);
   } else {
     auto [value, type] = getAppendedAttr(globs, state);
 
