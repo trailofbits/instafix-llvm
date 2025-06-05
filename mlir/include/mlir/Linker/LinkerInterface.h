@@ -55,9 +55,6 @@ private:
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
       : mapping(std::move(mapping)), builder(dst.getBodyRegion()) {}
 
-  LinkState(Region &dst, std::shared_ptr<IRMapping> mapping)
-      : mapping(std::move(mapping)), builder(dst) {}
-
   std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;
 };
