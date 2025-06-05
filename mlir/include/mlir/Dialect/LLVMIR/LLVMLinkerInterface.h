@@ -8,9 +8,6 @@ namespace LLVM {
 
 class LLVMSymbolLinkerInterface
     : public link::SymbolAttrLLVMLinkerInterface<LLVMSymbolLinkerInterface> {
-  using Base = link::SymbolAttrLLVMLinkerInterface<LLVMSymbolLinkerInterface>;
-  using Mixin = Base::LLVMLinkerMixin;
-
 public:
   LLVMSymbolLinkerInterface(Dialect *dialect);
 

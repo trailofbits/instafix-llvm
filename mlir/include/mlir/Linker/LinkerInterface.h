@@ -177,7 +177,7 @@ public:
                                         ConflictResolution resolution);
 
   /// Gets the conflict resolution for a given conflict
-  virtual ConflictResolution getConflictResolution(Conflict pair) = 0;
+  virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
 
   virtual LogicalResult verifyLinkageCompatibility(Conflict pair) const = 0;
 

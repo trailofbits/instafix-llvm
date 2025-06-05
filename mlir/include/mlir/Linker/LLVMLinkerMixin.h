@@ -237,7 +237,7 @@ public:
     return success();
   }
 
-  ConflictResolution getConflictResolution(Conflict pair) {
+  ConflictResolution getConflictResolution(Conflict pair) const {
     const DerivedLinkerInterface &derived = getDerived();
     assert(derived.canBeLinked(pair.src) && "expected linkable operation");
     assert(derived.canBeLinked(pair.dst) && "expected linkable operation");
@@ -263,12 +263,6 @@ public:
     const bool dstIsDeclaration = isDeclarationForLinker(pair.dst);
 
     if (isAppendingLinkage(dstLinkage)) {
-      auto &toAppend = append[derived.getSymbol(pair.src)];
-      if (toAppend.empty())
-        toAppend.push_back(pair.dst);
-      if (!derived.isDeclaration(pair.src)) {
-        toAppend.push_back(pair.src);
-      }
       return ConflictResolution::LinkFromSrc;
     }
 
@@ -325,10 +319,6 @@ public:
 
     llvm_unreachable("unimplemented conflict resolution");
   }
-
-protected:
-  // Operations to append together
-  llvm::StringMap<llvm::SmallVector<Operation *, 2>> append;
 };
 
 //===----------------------------------------------------------------------===//
@@ -340,6 +330,7 @@ class SymbolAttrLLVMLinkerInterface
     : public SymbolAttrLinkerInterface,
       public LLVMLinkerMixin<DerivedLinkerInterface> {
 public:
+  using SymbolAttrLinkerInterface::resolveConflict;
   using SymbolAttrLinkerInterface::SymbolAttrLinkerInterface;
 
   using LinkerMixin = LLVMLinkerMixin<DerivedLinkerInterface>;
@@ -352,9 +343,30 @@ public:
     return LinkerMixin::verifyLinkageCompatibility(pair);
   }
 
-  ConflictResolution getConflictResolution(Conflict pair) override {
+  ConflictResolution getConflictResolution(Conflict pair) const override {
     return LinkerMixin::getConflictResolution(pair);
   }
+
+  LogicalResult resolveConflict(Conflict pair) override {
+    if (failed(this->verifyLinkageCompatibility(pair)))
+      return failure();
+    ConflictResolution resolution = this->getConflictResolution(pair);
+    auto &derived = LinkerMixin::getDerived();
+    if (resolution == ConflictResolution::LinkFromSrc &&
+        isAppendingLinkage(derived.getLinkage(pair.src))) {
+      auto &toAppend = append[derived.getSymbol(pair.src)];
+      if (toAppend.empty())
+        toAppend.push_back(pair.dst);
+      if (!derived.isDeclaration(pair.src)) {
+        toAppend.push_back(pair.src);
+      }
+    }
+    return resolveConflict(pair, resolution);
+  }
+
+protected:
+  // Operations to append together
+  llvm::StringMap<llvm::SmallVector<Operation *, 2>> append;
 };
 } // namespace mlir::link
 

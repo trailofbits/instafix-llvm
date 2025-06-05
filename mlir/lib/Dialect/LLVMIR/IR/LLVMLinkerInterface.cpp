@@ -296,7 +296,7 @@ getAppendedOpWithInitRegion(llvm::ArrayRef<mlir::Operation *> globs,
 
 Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
                                                           LinkState &state) {
-  const auto &globs = Mixin::append.lookup(glob);
+  const auto &globs = append.lookup(glob);
   auto lastGV = dyn_cast<LLVM::GlobalOp>(globs.back());
   if (!lastGV)
     llvm_unreachable("unexpected operation");
