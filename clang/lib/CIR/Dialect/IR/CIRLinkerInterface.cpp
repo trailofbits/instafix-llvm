@@ -147,6 +147,34 @@ public:
   // FIXME: CIR does not yet have UnnamedAddr attribute
   static void setUnnamedAddr(Operation */* op*/, UnnamedAddr addr) {}
 
+  static std::optional<uint64_t> getAlignment(Operation *op) {
+    if (auto gv = dyn_cast<cir::GlobalOp>(op))
+      return gv.getAlignment();
+    // FIXME: CIR does not (yet?) have alignment for functions
+    llvm_unreachable("unexpected operation");
+  }
+
+  static bool isConstant(Operation *op) {
+    if (auto gv = dyn_cast<cir::GlobalOp>(op))
+      return gv.getConstant();
+    llvm_unreachable("unexpected operation");
+  }
+
+  static llvm::StringRef getSection(Operation *op) {
+    if (auto gv = dyn_cast<cir::GlobalOp>(op)) {
+      auto section = gv.getSection();
+      return section ? section.value() : llvm::StringRef();
+    }
+    // FIXME: CIR func does not yet have section attribute
+    llvm_unreachable("unexpected operation");
+  }
+
+  static std::optional<cir::AddressSpaceAttr> getAddressSpace(Operation *op) {
+    if (auto gv = dyn_cast<cir::GlobalOp>(op)) {
+      return gv.getAddrSpaceAttr();
+    }
+    llvm_unreachable("unexpected operation");
+  }
 };
 
 //===----------------------------------------------------------------------===//

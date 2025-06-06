@@ -2,6 +2,7 @@
 #define MLIR_DIALECT_LLVMIR_LLVMLINKERINTERFACE_H
 
 #include "mlir/Linker/LLVMLinkerMixin.h"
+#include "mlir/Linker/LinkerInterface.h"
 namespace mlir {
 namespace LLVM {
 
@@ -18,6 +19,12 @@ public:
   static unsigned getBitWidth(Operation *op);
   static UnnamedAddr getUnnamedAddr(Operation *op);
   static void setUnnamedAddr(Operation *op, UnnamedAddr val);
+  static std::optional<uint64_t> getAlignment(Operation *op);
+  static bool isConstant(Operation *op);
+  static llvm::StringRef getSection(Operation *op);
+  static uint32_t getAddressSpace(Operation *op);
+  Operation *materialize(Operation *src, link::LinkState &state) const override;
+  Operation *appendGlobals(llvm::StringRef glob, link::LinkState &state);
 };
 
 } // namespace LLVM

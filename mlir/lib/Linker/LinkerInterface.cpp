@@ -53,6 +53,8 @@ LinkState LinkState::nest(ModuleOp submod) const {
   return LinkState(submod, mapping);
 }
 
+IRMapping &LinkState::getMapping() { return *mapping.get(); }
+
 //===----------------------------------------------------------------------===//
 // SymbolAttrLinkerInterface
 //===----------------------------------------------------------------------===//
