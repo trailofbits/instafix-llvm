@@ -139,6 +139,7 @@ static UnnamedAddr getMinUnnamedAddr(UnnamedAddr lhs, UnnamedAddr rhs) {
 
 template <typename DerivedLinkerInterface>
 class LLVMLinkerMixin {
+protected:
   const DerivedLinkerInterface &getDerived() const {
     return static_cast<const DerivedLinkerInterface &>(*this);
   }
@@ -203,14 +204,35 @@ public:
     Linkage srcLinkage = derived.getLinkage(pair.src);
     Linkage dstLinkage = derived.getLinkage(pair.dst);
 
-    UnnamedAddr srcUnnamedAddr = derived.getUnnamedAddr(pair.src);
-    UnnamedAddr dstUnnamedAddr = derived.getUnnamedAddr(pair.dst);
+    if (isAppendingLinkage(srcLinkage) != isAppendingLinkage(dstLinkage)) {
+      return linkError("Mismatched appending linkage");
+    }
 
-    if (isAppendingLinkage(srcLinkage) && isAppendingLinkage(dstLinkage)) {
-      if (srcUnnamedAddr != dstUnnamedAddr) {
+    if (isAppendingLinkage(srcLinkage)) {
+      if (derived.isConstant(pair.src) != derived.isConstant(pair.dst))
+        return linkError(
+            "Appending variables with different constness need to be linked!");
+
+      if (derived.getAlignment(pair.src) != derived.getAlignment(pair.dst))
+        return linkError(
+            "Appending variables with different alignment need to be linked!");
+
+      if (derived.getVisibility(pair.src) != derived.getVisibility(pair.dst))
+        return linkError(
+            "Appending variables with different visibility need to be linked!");
+
+      if (derived.getUnnamedAddr(pair.src) != derived.getUnnamedAddr(pair.dst))
         return linkError("Appending variables with different unnamed_addr need "
-                         "to be linked");
-      }
+                         "to be linked!");
+
+      if (derived.getSection(pair.src) != derived.getSection(pair.dst))
+        return linkError(
+            "Appending variables with different section need to be linked!");
+
+      if (derived.getAddressSpace(pair.src) !=
+          derived.getAddressSpace(pair.dst))
+        return linkError("Appending variables with different address space "
+                         "need to be linked!");
     }
     return success();
   }
@@ -239,6 +261,10 @@ public:
 
     const bool srcIsDeclaration = isDeclarationForLinker(pair.src);
     const bool dstIsDeclaration = isDeclarationForLinker(pair.dst);
+
+    if (isAppendingLinkage(dstLinkage)) {
+      return ConflictResolution::LinkFromSrc;
+    }
 
     if (isAvailableExternallyLinkage(srcLinkage) && dstIsDeclaration) {
       return ConflictResolution::LinkFromSrc;
@@ -304,6 +330,7 @@ class SymbolAttrLLVMLinkerInterface
     : public SymbolAttrLinkerInterface,
       public LLVMLinkerMixin<DerivedLinkerInterface> {
 public:
+  using SymbolAttrLinkerInterface::resolveConflict;
   using SymbolAttrLinkerInterface::SymbolAttrLinkerInterface;
 
   using LinkerMixin = LLVMLinkerMixin<DerivedLinkerInterface>;
@@ -319,8 +346,28 @@ public:
   ConflictResolution getConflictResolution(Conflict pair) const override {
     return LinkerMixin::getConflictResolution(pair);
   }
-};
 
+  LogicalResult resolveConflict(Conflict pair) override {
+    if (failed(this->verifyLinkageCompatibility(pair)))
+      return failure();
+    ConflictResolution resolution = this->getConflictResolution(pair);
+    auto &derived = LinkerMixin::getDerived();
+    if (resolution == ConflictResolution::LinkFromSrc &&
+        isAppendingLinkage(derived.getLinkage(pair.src))) {
+      auto &toAppend = append[derived.getSymbol(pair.src)];
+      if (toAppend.empty())
+        toAppend.push_back(pair.dst);
+      if (!derived.isDeclaration(pair.src)) {
+        toAppend.push_back(pair.src);
+      }
+    }
+    return resolveConflict(pair, resolution);
+  }
+
+protected:
+  // Operations to append together
+  llvm::StringMap<llvm::SmallVector<Operation *, 2>> append;
+};
 } // namespace mlir::link
 
 #endif // MLIR_LINKER_LLVMLINKERMIXIN_H

@@ -48,10 +48,12 @@ public:
 
   LinkState nest(ModuleOp submod) const;
 
+  IRMapping &getMapping();
+
 private:
   // Private constructor used by nest()
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
-      : mapping(mapping), builder(dst.getBodyRegion()) {}
+      : mapping(std::move(mapping)), builder(dst.getBodyRegion()) {}
 
   std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;
