@@ -330,7 +330,6 @@ class SymbolAttrLLVMLinkerInterface
     : public SymbolAttrLinkerInterface,
       public LLVMLinkerMixin<DerivedLinkerInterface> {
 public:
-  using SymbolAttrLinkerInterface::resolveConflict;
   using SymbolAttrLinkerInterface::SymbolAttrLinkerInterface;
 
   using LinkerMixin = LLVMLinkerMixin<DerivedLinkerInterface>;
@@ -347,10 +346,8 @@ public:
     return LinkerMixin::getConflictResolution(pair);
   }
 
-  LogicalResult resolveConflict(Conflict pair) override {
-    if (failed(this->verifyLinkageCompatibility(pair)))
-      return failure();
-    ConflictResolution resolution = this->getConflictResolution(pair);
+  LogicalResult resolveConflict(Conflict pair,
+                                ConflictResolution resolution) override {
     auto &derived = LinkerMixin::getDerived();
     if (resolution == ConflictResolution::LinkFromSrc &&
         isAppendingLinkage(derived.getLinkage(pair.src))) {
@@ -361,7 +358,7 @@ public:
         toAppend.push_back(pair.src);
       }
     }
-    return resolveConflict(pair, resolution);
+    return SymbolAttrLinkerInterface::resolveConflict(pair, resolution);
   }
 
 protected:
