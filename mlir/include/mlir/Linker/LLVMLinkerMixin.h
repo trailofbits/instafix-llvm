@@ -346,8 +346,8 @@ public:
     return LinkerMixin::getConflictResolution(pair);
   }
 
-
-  LogicalResult resolveConflict(Conflict pair, ConflictResolution resolution) override {
+  LogicalResult resolveConflict(Conflict pair,
+                                ConflictResolution resolution) override {
     auto &derived = LinkerMixin::getDerived();
     if (resolution == ConflictResolution::LinkFromSrc &&
         isAppendingLinkage(derived.getLinkage(pair.src))) {
