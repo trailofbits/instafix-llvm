@@ -26,7 +26,8 @@ LLVM::LLVMSymbolLinkerInterface::LLVMSymbolLinkerInterface(Dialect *dialect)
     : SymbolAttrLLVMLinkerInterface(dialect) {}
 
 bool LLVM::LLVMSymbolLinkerInterface::canBeLinked(Operation *op) const {
-  return isa<LLVM::GlobalOp>(op) || isa<LLVM::LLVMFuncOp>(op);
+  return isa<LLVM::GlobalOp, LLVM::LLVMFuncOp, LLVM::GlobalCtorsOp,
+             LLVM::GlobalDtorsOp>(op);
 }
 
 //===--------------------------------------------------------------------===//
@@ -38,6 +39,8 @@ Linkage LLVM::LLVMSymbolLinkerInterface::getLinkage(Operation *op) {
     return gv.getLinkage();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getLinkage();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return Linkage::Appending;
   llvm_unreachable("unexpected operation");
 }
 
@@ -46,6 +49,8 @@ Visibility LLVM::LLVMSymbolLinkerInterface::getVisibility(Operation *op) {
     return gv.getVisibility_();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getVisibility_();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return Visibility::Default;
   llvm_unreachable("unexpected operation");
 }
 
@@ -55,6 +60,10 @@ void LLVM::LLVMSymbolLinkerInterface::setVisibility(Operation *op,
     return gv.setVisibility_(visibility);
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.setVisibility_(visibility);
+  // GlobalCotrs and Dtors are defined as operations in mlir
+  // but as globals in LLVM IR
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return;
   llvm_unreachable("unexpected operation");
 }
 
@@ -65,6 +74,8 @@ bool LLVM::LLVMSymbolLinkerInterface::isDeclaration(Operation *op) {
     return gv.getInitializerRegion().empty() && !gv.getValue();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getBody().empty();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return false;
   llvm_unreachable("unexpected operation");
 }
 
@@ -86,6 +97,8 @@ UnnamedAddr LLVM::LLVMSymbolLinkerInterface::getUnnamedAddr(Operation *op) {
     auto addr = fn.getUnnamedAddr();
     return addr ? *addr : UnnamedAddr::Global;
   }
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return UnnamedAddr::Global;
   llvm_unreachable("unexpected operation");
 }
 
@@ -95,6 +108,10 @@ void LLVM::LLVMSymbolLinkerInterface::setUnnamedAddr(Operation *op,
     return gv.setUnnamedAddr(val);
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.setUnnamedAddr(val);
+  // GlobalCotrs and Dtors are defined as operations in mlir
+  // but as globals in LLVM IR
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return;
   llvm_unreachable("unexpected operation");
 }
 
@@ -104,12 +121,16 @@ LLVM::LLVMSymbolLinkerInterface::getAlignment(Operation *op) {
     return gv.getAlignment();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getAlignment();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return {};
   llvm_unreachable("unexpected operation");
 }
 
 bool LLVM::LLVMSymbolLinkerInterface::isConstant(Operation *op) {
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
     return gv.getConstant();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return false;
   llvm_unreachable("unexpected operation");
 }
 
@@ -122,6 +143,8 @@ llvm::StringRef LLVM::LLVMSymbolLinkerInterface::getSection(Operation *op) {
     auto section = fn.getSection();
     return section ? section.value() : llvm::StringRef();
   }
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return llvm::StringRef();
   llvm_unreachable("unexpected operation");
 }
 
@@ -129,14 +152,26 @@ uint32_t LLVM::LLVMSymbolLinkerInterface::getAddressSpace(Operation *op) {
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op)) {
     return gv.getAddrSpace();
   }
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+    return 0;
   llvm_unreachable("unexpected operation");
+}
+
+StringRef LLVM::LLVMSymbolLinkerInterface::getSymbol(Operation *op) const {
+  if (isa<LLVM::GlobalCtorsOp>(op))
+    return "llvm.global_ctors";
+  if (isa<LLVM::GlobalDtorsOp>(op))
+    return "llvm.global_dtors";
+  return SymbolAttrLinkerInterface::getSymbol(op);
 }
 
 Operation *
 LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
                                              LinkState &state) const {
   auto derived = LinkerMixin::getDerived();
-  if (isAppendingLinkage(derived.getLinkage(src))) {
+  // empty append means that we either have single module or that something went
+  // wrong
+  if (isAppendingLinkage(derived.getLinkage(src)) && !append.empty()) {
     return derived.appendGlobals(derived.getSymbol(src), state);
   }
   return SymbolAttrLinkerInterface::materialize(src, state);
@@ -296,6 +331,11 @@ getAppendedOpWithInitRegion(llvm::ArrayRef<mlir::Operation *> globs,
 
 Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
                                                           LinkState &state) {
+  if (glob == "llvm.global_ctors")
+    return appendGlobalStructors<LLVM::GlobalCtorsOp>(state);
+  if (glob == "llvm.global_dtors")
+    return appendGlobalStructors<LLVM::GlobalDtorsOp>(state);
+
   const auto &globs = append.lookup(glob);
   auto lastGV = dyn_cast<LLVM::GlobalOp>(globs.back());
   if (!lastGV)
