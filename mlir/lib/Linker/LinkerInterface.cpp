@@ -130,7 +130,8 @@ LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) const {
     if (!materialized)
       return materializeError(op);
 
-    st.insert(materialized);
+    if (isa<SymbolOpInterface>(op))
+      st.insert(materialized);
   }
 
   std::vector<std::pair<Operation *, StringAttr>> toRenameUsers;
