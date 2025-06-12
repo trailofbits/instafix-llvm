@@ -196,6 +196,8 @@ SymbolAttrLinkerInterface::resolveConflict(Conflict pair,
   case ConflictResolution::LinkFromBothAndRenameSrc:
     uniqued.insert(pair.src);
     return success();
+  case ConflictResolution::Failure:
+    return pair.src->emitError("Linker error");
   }
 
   llvm_unreachable("unimplemented conflict resolution");

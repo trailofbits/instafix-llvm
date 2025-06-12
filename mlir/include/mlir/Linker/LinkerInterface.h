@@ -152,6 +152,7 @@ enum class ConflictResolution {
   LinkFromDst,
   LinkFromBothAndRenameDst,
   LinkFromBothAndRenameSrc,
+  Failure,
 };
 
 class SymbolAttrLinkerInterface : public SymbolLinkerInterface {
