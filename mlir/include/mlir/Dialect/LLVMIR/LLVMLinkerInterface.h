@@ -15,6 +15,8 @@ public:
   static Linkage getLinkage(Operation *op);
   static Visibility getVisibility(Operation *op);
   static void setVisibility(Operation *op, Visibility visibility);
+  static bool isComdat(Operation *op);
+  static std::optional<link::ComdatSelector> getComdatSelector(Operation *op);
   static bool isDeclaration(Operation *op);
   static unsigned getBitWidth(Operation *op);
   static UnnamedAddr getUnnamedAddr(Operation *op);
