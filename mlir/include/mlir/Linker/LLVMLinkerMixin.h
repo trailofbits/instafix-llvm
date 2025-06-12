@@ -158,6 +158,9 @@ public:
     if (pair.src == pair.dst)
       return false;
 
+    if (isa<LLVM::ComdatOp>(pair.src))
+      return true;
+
     Linkage srcLinkage = derived.getLinkage(pair.src);
 
     // Always import variables with appending linkage.
@@ -316,6 +319,29 @@ public:
     if (isWeakForLinker(dstLinkage)) {
       assert(isExternalLinkage(srcLinkage));
       return ConflictResolution::LinkFromSrc;
+    }
+
+    std::optional<mlir::LLVM::ComdatSelectorOp> srcComdatSel = derived.getComdatSelector(pair.src);
+    std::optional<mlir::LLVM::ComdatSelectorOp> dstComdatSel = derived.getComdatSelector(pair.dst);
+    if (srcComdatSel.has_value() && dstComdatSel.has_value()) {
+      auto srcComdatName = srcComdatSel->getName();
+      auto dstComdatName = dstComdatSel->getName();
+      auto srcComdat = srcComdatSel->getComdat();
+      auto dstComdat = dstComdatSel->getComdat();
+      if (srcComdatName != dstComdatName) {
+          llvm_unreachable("Comdat selector names don't match");
+      }
+      if (srcComdat != dstComdat) {
+          llvm_unreachable("Comdat selector kinds don't match");
+      }
+
+      if (srcComdat == mlir::LLVM::comdat::Comdat::Any) {
+          return ConflictResolution::LinkFromDst;
+      }
+      if (srcComdat == mlir::LLVM::comdat::Comdat::NoDeduplicate) {
+          return ConflictResolution::Failure;
+      }
+      llvm_unreachable("unimplemented comdat kind");
     }
 
     llvm_unreachable("unimplemented conflict resolution");
