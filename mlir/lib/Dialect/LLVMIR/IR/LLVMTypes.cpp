@@ -446,7 +446,7 @@ LLVMStructType LLVMStructType::getUniquedIdentified(MLIRContext *context,
   unsigned counter = 1;
   do {
     auto type = LLVMStructType::getIdentified(context, stringName);
-    if (failed(type.setBody(elements, isPacked))) {
+    if (failed(type.setBody(elements, isPacked, /* forceOpaqueRedef = */ true))) {
       stringName = (Twine(name) + "." + Twine(counter++)).str();
       continue;
     }
@@ -493,11 +493,11 @@ LLVMStructType::getOpaqueChecked(function_ref<InFlightDiagnostic()> emitError,
   return Base::getChecked(emitError, context, name, /*opaque=*/true);
 }
 
-LogicalResult LLVMStructType::setBody(ArrayRef<Type> types, bool isPacked) {
+LogicalResult LLVMStructType::setBody(ArrayRef<Type> types, bool isPacked, bool forceOpaqueRedef) {
   assert(isIdentified() && "can only set bodies of identified structs");
   assert(llvm::all_of(types, LLVMStructType::isValidElementType) &&
          "expected valid body types");
-  return Base::mutate(types, isPacked);
+  return Base::mutate(types, isPacked, forceOpaqueRedef);
 }
 
 bool LLVMStructType::isPacked() const { return getImpl()->isPacked(); }

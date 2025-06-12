@@ -231,7 +231,7 @@ def LLVMStructType : LLVMType<"LLVMStruct", "struct", [
     /// different thread modified the struct after it was created. Most callers
     /// are likely to assert this always succeeds, but it is possible to implement
     /// a local renaming scheme based on the result of this call.
-    LogicalResult setBody(ArrayRef<Type> types, bool isPacked);
+    LogicalResult setBody(ArrayRef<Type> types, bool isPacked, bool forceOpaqueRedef = false);
 
     /// Checks if a struct is packed.
     bool isPacked() const;

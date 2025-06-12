@@ -240,13 +240,14 @@ public:
   /// if the struct is marked as intentionally opaque. The struct will be marked
   /// as initialized as a result of this operation and can no longer be changed.
   LogicalResult mutate(TypeStorageAllocator &allocator, ArrayRef<Type> body,
-                       bool packed) {
+                       bool packed, bool forceOpaqueRedef) {
     if (!isIdentified())
       return failure();
-    if (isInitialized())
+    if (isInitialized() && !(forceOpaqueRedef && isOpaque()))
       return success(!isOpaque() && body == getIdentifiedStructBody() &&
                      packed == isPacked());
 
+    llvm::Bitfield::set<MutableFlagOpaque>(identifiedBodySizeAndFlags, false);
     llvm::Bitfield::set<MutableFlagInitialized>(identifiedBodySizeAndFlags,
                                                 true);
     llvm::Bitfield::set<MutableFlagPacked>(identifiedBodySizeAndFlags, packed);

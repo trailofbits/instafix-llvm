@@ -180,10 +180,6 @@ Type LLVMStructType::parse(AsmParser &parser) {
       return LLVMStructType();
     auto type = LLVMStructType::getOpaqueChecked(
         [loc] { return emitError(loc); }, loc.getContext(), name);
-    if (!type.isOpaque()) {
-      parser.emitError(kwLoc, "redeclaring defined struct as opaque");
-      return LLVMStructType();
-    }
     return type;
   }
 
