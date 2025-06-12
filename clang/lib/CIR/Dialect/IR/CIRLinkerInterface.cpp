@@ -73,6 +73,16 @@ public:
     llvm_unreachable("unexpected operation");
   }
 
+  static bool isComdat(Operation *op) {
+      // TODO(frabert): Extracting comdat info from CIR is not implemented yet
+      return false;
+  }
+
+  static std::optional<mlir::link::ComdatSelector> getComdatSelector(Operation *op) {
+    // TODO(frabert): Extracting comdat info from CIR is not implemented yet
+    return std::nullopt;
+  }
+
   // TODO: expose lowerCIRVisibilityToLLVMVisibility from LowerToLLVM.cpp
   static Visibility toLLVMVisibility(cir::VisibilityAttr visibility) {
     return toLLVMVisibility(visibility.getValue());

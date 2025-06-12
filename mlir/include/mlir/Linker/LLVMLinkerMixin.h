@@ -134,6 +134,17 @@ static UnnamedAddr getMinUnnamedAddr(UnnamedAddr lhs, UnnamedAddr rhs) {
 }
 
 //===----------------------------------------------------------------------===//
+// Comdat helpers
+//===----------------------------------------------------------------------===//
+
+using ComdatKind = LLVM::comdat::Comdat;
+
+struct ComdatSelector {
+  StringRef name;
+  ComdatKind kind;
+};
+
+//===----------------------------------------------------------------------===//
 // LLVMLinkerMixin
 //===----------------------------------------------------------------------===//
 
@@ -157,6 +168,9 @@ public:
     assert(derived.canBeLinked(pair.src) && "expected linkable operation");
     if (pair.src == pair.dst)
       return false;
+
+    if (derived.isComdat(pair.src))
+      return true;
 
     Linkage srcLinkage = derived.getLinkage(pair.src);
 
@@ -316,6 +330,29 @@ public:
     if (isWeakForLinker(dstLinkage)) {
       assert(isExternalLinkage(srcLinkage));
       return ConflictResolution::LinkFromSrc;
+    }
+
+    std::optional<ComdatSelector> srcComdatSel = derived.getComdatSelector(pair.src);
+    std::optional<ComdatSelector> dstComdatSel = derived.getComdatSelector(pair.dst);
+    if (srcComdatSel.has_value() && dstComdatSel.has_value()) {
+      auto srcComdatName = srcComdatSel->name;
+      auto dstComdatName = dstComdatSel->name;
+      auto srcComdat = srcComdatSel->kind;
+      auto dstComdat = dstComdatSel->kind;
+      if (srcComdatName != dstComdatName) {
+          llvm_unreachable("Comdat selector names don't match");
+      }
+      if (srcComdat != dstComdat) {
+          llvm_unreachable("Comdat selector kinds don't match");
+      }
+
+      if (srcComdat == mlir::LLVM::comdat::Comdat::Any) {
+          return ConflictResolution::LinkFromDst;
+      }
+      if (srcComdat == mlir::LLVM::comdat::Comdat::NoDeduplicate) {
+          return ConflictResolution::Failure;
+      }
+      llvm_unreachable("unimplemented comdat kind");
     }
 
     llvm_unreachable("unimplemented conflict resolution");
