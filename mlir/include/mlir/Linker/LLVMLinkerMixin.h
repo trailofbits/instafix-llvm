@@ -293,10 +293,9 @@ public:
     if (isLinkOnceLinkage(srcLinkage))
       return ConflictResolution::LinkFromDst;
 
-    if (isLinkOnceLinkage(dstLinkage) || isWeakLinkage(dstLinkage))
-      return ConflictResolution::LinkFromSrc;
-
     if (isCommonLinkage(srcLinkage)) {
+      if (isLinkOnceLinkage(dstLinkage) || isWeakLinkage(dstLinkage))
+        return ConflictResolution::LinkFromSrc;
       if (!isCommonLinkage(dstLinkage))
         return ConflictResolution::LinkFromDst;
       if (derived.getBitWidth(pair.src) > derived.getBitWidth(pair.dst))
@@ -309,10 +308,9 @@ public:
       assert(!isAvailableExternallyLinkage(dstLinkage));
       if (isLinkOnceLinkage(dstLinkage) && isWeakLinkage(srcLinkage)) {
         return ConflictResolution::LinkFromSrc;
-      } else {
-        // No need to link the `src`
-        return ConflictResolution::LinkFromDst;
       }
+      // No need to link the `src`
+      return ConflictResolution::LinkFromDst;
     }
 
     if (isWeakForLinker(dstLinkage)) {
