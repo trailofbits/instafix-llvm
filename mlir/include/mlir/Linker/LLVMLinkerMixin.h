@@ -164,7 +164,10 @@ public:
     if (isAppendingLinkage(srcLinkage))
       return true;
 
-    bool alreadyDeclared = pair.dst && derived.isDeclaration(pair.dst);
+    bool alreadyDefinedOrDeclared =
+        pair.dst && !isLocalLinkage(derived.getLinkage(pair.dst));
+    bool alreadyDeclared =
+        alreadyDefinedOrDeclared && derived.isDeclaration(pair.dst);
 
     // Don't import globals that are already declared
     if (derived.shouldLinkOnlyNeeded() && !alreadyDeclared)
@@ -175,7 +178,7 @@ public:
       return forDependency;
 
     // Always import dependencies that are not yet defined or declared
-    if (forDependency && !pair.dst)
+    if (forDependency && !alreadyDefinedOrDeclared)
       return true;
 
     if (derived.isDeclaration(pair.src))
