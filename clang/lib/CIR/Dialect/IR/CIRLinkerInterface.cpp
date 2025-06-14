@@ -73,6 +73,10 @@ public:
     llvm_unreachable("unexpected operation");
   }
 
+  static std::optional<mlir::LLVM::ComdatSelectorOp> getComdatSelector(Operation *op) {
+    return std::nullopt;
+  }
+
   // TODO: expose lowerCIRVisibilityToLLVMVisibility from LowerToLLVM.cpp
   static Visibility toLLVMVisibility(cir::VisibilityAttr visibility) {
     return toLLVMVisibility(visibility.getValue());
