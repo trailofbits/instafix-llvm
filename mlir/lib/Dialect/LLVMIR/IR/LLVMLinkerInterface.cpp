@@ -177,6 +177,37 @@ LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
   return SymbolAttrLinkerInterface::materialize(src, state);
 }
 
+SmallVector<Operation *>
+LLVM::LLVMSymbolLinkerInterface::dependencies(Operation *op) const {
+  // Structor ops implement the SymbolUserOpInteface but can not provide
+  // the `getUserSymbol` method correctly as they reference mutliple symbols and
+  // the method allows to return only one. They also do not have any body to
+  // walk and reference the symbols in an attribute. We have to intercept on
+  // these operations.
+  ArrayAttr structors = {};
+  if (auto ctor = dyn_cast<GlobalCtorsOp>(op)) {
+    structors = ctor.getCtors();
+  }
+  if (auto dtor = dyn_cast<GlobalDtorsOp>(op)) {
+    structors = dtor.getDtors();
+  }
+
+  if (structors) {
+    Operation *module = op->getParentOfType<ModuleOp>();
+    SymbolTable st(module);
+    SmallVector<Operation *> result;
+    for (auto structor : structors) {
+      auto symbolRef = cast<FlatSymbolRefAttr>(structor);
+      if (Operation *dep = st.lookup(symbolRef.getRootReference()))
+        result.push_back(dep);
+    }
+    return result;
+  }
+  // Call the regular version if no special case is happening
+  return link::SymbolAttrLLVMLinkerInterface<
+      LLVMSymbolLinkerInterface>::dependencies(op);
+}
+
 static std::pair<Attribute, Type>
 getAppendedArrayAttr(llvm::ArrayRef<mlir::Operation *> globs,
                      LinkState &state) {
