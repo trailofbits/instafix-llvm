@@ -25,16 +25,19 @@ public:
   static uint32_t getAddressSpace(Operation *op);
   StringRef getSymbol(Operation *op) const override;
   Operation *materialize(Operation *src, link::LinkState &state) const override;
+  SmallVector<Operation *> dependencies(Operation *op) const override;
   Operation *appendGlobals(llvm::StringRef glob, link::LinkState &state);
 
   template <typename structor_t>
   Operation *appendGlobalStructors(link::LinkState &state) {
-    ArrayRef<Operation *> toLink;
+    ArrayRef<Operation *> toLink{};
 
     if constexpr (std::is_same<LLVM::GlobalCtorsOp, structor_t>()) {
-      toLink = append.lookup("llvm.global_ctors");
+      if (auto found = append.find("llvm.global_ctors"); found != append.end())
+        toLink = append.find("llvm.global_ctors")->second;
     } else if constexpr (std::is_same<LLVM::GlobalDtorsOp, structor_t>()) {
-      toLink = append.lookup("llvm.global_dtors");
+      if (auto found = append.find("llvm.global_ctors"); found != append.end())
+        toLink = append.find("llvm.global_ctors")->second;
     }
 
     std::vector<Attribute> newStructorList;
