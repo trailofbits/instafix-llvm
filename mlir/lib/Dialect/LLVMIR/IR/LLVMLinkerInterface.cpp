@@ -239,7 +239,7 @@ LLVM::LLVMSymbolLinkerInterface::dependencies(Operation *op) const {
     return result;
   }
 
-  // Functios are defined only in module, avoid unnecessary cast in every
+  // Functions are only defined in module, avoid unnecessary cast in every
   // analyzed op
   if (auto fn = dyn_cast<LLVMFuncOp>(op)) {
     if (FlatSymbolRefAttr personality = fn.getPersonalityAttr())
