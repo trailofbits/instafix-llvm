@@ -211,6 +211,15 @@ LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
 
 SmallVector<Operation *>
 LLVM::LLVMSymbolLinkerInterface::dependencies(Operation *op) const {
+  Operation *module = op->getParentOfType<ModuleOp>();
+  SymbolTable st(module);
+  SmallVector<Operation *> result;
+
+  auto insertDepIfExists = [&](auto symbolRef) -> void {
+    if (Operation *dep = st.lookup(symbolRef.getRootReference()))
+      result.push_back(dep);
+  };
+
   // Structor ops implement the SymbolUserOpInteface but can not provide
   // the `getUserSymbol` method correctly as they reference mutliple symbols and
   // the method allows to return only one. They also do not have any body to
@@ -225,19 +234,33 @@ LLVM::LLVMSymbolLinkerInterface::dependencies(Operation *op) const {
   }
 
   if (structors) {
-    Operation *module = op->getParentOfType<ModuleOp>();
-    SymbolTable st(module);
-    SmallVector<Operation *> result;
-    for (auto structor : structors) {
-      auto symbolRef = cast<FlatSymbolRefAttr>(structor);
-      if (Operation *dep = st.lookup(symbolRef.getRootReference()))
-        result.push_back(dep);
-    }
+    for (auto structor : structors)
+      insertDepIfExists(cast<FlatSymbolRefAttr>(structor));
     return result;
   }
-  // Call the regular version if no special case is happening
-  return link::SymbolAttrLLVMLinkerInterface<
-      LLVMSymbolLinkerInterface>::dependencies(op);
+
+  // Functions are only defined in module, avoid unnecessary cast in every
+  // analyzed op
+  if (auto fn = dyn_cast<LLVMFuncOp>(op)) {
+    if (FlatSymbolRefAttr personality = fn.getPersonalityAttr())
+      insertDepIfExists(personality);
+  }
+
+  op->walk([&](Operation *operation) {
+    if (operation == op)
+      return;
+    if (auto user = dyn_cast<SymbolUserOpInterface>(operation)) {
+      if (SymbolRefAttr symbol = user.getUserSymbol())
+        insertDepIfExists(symbol);
+      return;
+    }
+    if (auto invoke = dyn_cast<InvokeOp>(operation)) {
+      if (FlatSymbolRefAttr symbol = invoke.getCalleeAttr())
+        insertDepIfExists(symbol);
+    }
+  });
+
+  return result;
 }
 
 static std::pair<Attribute, Type>
