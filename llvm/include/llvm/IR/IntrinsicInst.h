@@ -479,8 +479,7 @@ public:
   /// \name Casting methods
   /// @{
   static bool classof(const IntrinsicInst *I) {
-    return I->getIntrinsicID() == Intrinsic::dbg_value ||
-           I->getIntrinsicID() == Intrinsic::dbg_assign;
+    return I->getIntrinsicID() == Intrinsic::dbg_value;
   }
   static bool classof(const Value *V) {
     return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));

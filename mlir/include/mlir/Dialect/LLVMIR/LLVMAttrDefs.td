@@ -781,6 +781,32 @@ def LLVM_DILabelAttr : LLVM_Attr<"DILabel", "di_label",
 }
 
 //===----------------------------------------------------------------------===//
+// DIAssignIDAttr
+//===----------------------------------------------------------------------===//
+
+def LLVM_DIAssignIDAttr : LLVM_Attr<"DIAssignID", "di_assign_id",
+                                    /*traits=*/[], "DINodeAttr"> {
+  let parameters = (ins "DistinctAttr":$id);
+
+  let builders = [
+    AttrBuilder<(ins), [{
+      return $_get($_ctxt, DistinctAttr::create(UnitAttr::get($_ctxt)));
+    }]>
+  ];
+
+  let summary = "LLVM dialect assignment ID metadata";
+  let description = [{
+    Defines an assignment ID used by debug assignment tracking to link
+    dbg.assign intrinsics to the store instructions they describe.
+
+    See the following link for more details:
+    https://llvm.org/docs/AssignmentTracking.md
+  }];
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+//===----------------------------------------------------------------------===//
 // DIStringTypeAttr
 //===----------------------------------------------------------------------===//
 
