@@ -1978,8 +1978,35 @@ LogicalResult ModuleImport::convertInstruction(llvm::Instruction *inst) {
   }
 
   // Convert all instructions that have an mlirBuilder.
-  if (succeeded(convertInstructionImpl(builder, inst, *this, iface)))
+  if (succeeded(convertInstructionImpl(builder, inst, *this, iface))) {
+    // Handle DIAssignID metadata on store and alloca instructions for
+    // assignment tracking
+    if (auto *assignIDMD =
+            inst->getMetadata(llvm::LLVMContext::MD_DIAssignID)) {
+      if (auto *assignIDNode = dyn_cast<llvm::DIAssignID>(assignIDMD)) {
+        // Get the converted MLIR operation
+        Operation *mlirOp = lookupOperation(inst);
+        if (mlirOp) {
+          // Get or create the DIAssignIDAttr using the same mapping as debug
+          // intrinsics
+          auto it = assignIDMapping.find(assignIDNode);
+          DIAssignIDAttr assignIdAttr;
+          if (it != assignIDMapping.end()) {
+            assignIdAttr = it->second;
+          } else {
+            // Create new DIAssignIDAttr and add to mapping
+            DistinctAttr distinctId =
+                DistinctAttr::create(UnitAttr::get(context));
+            assignIdAttr = DIAssignIDAttr::get(context, distinctId);
+            assignIDMapping[assignIDNode] = assignIdAttr;
+          }
+          // Attach the assignment ID as an attribute to the operation
+          mlirOp->setAttr("DIAssignID", assignIdAttr);
+        }
+      }
+    }
     return success();
+  }
 
   return emitError(loc) << "unhandled instruction: " << diag(*inst);
 }
@@ -2549,6 +2576,50 @@ ModuleImport::processDebugIntrinsic(llvm::DbgVariableIntrinsic *dbgIntr,
           .Case([&](llvm::DbgValueInst *) {
             return builder.create<LLVM::DbgValueOp>(
                 loc, *argOperand, localVariableAttr, locationExprAttr);
+          })
+          .Case([&](llvm::DbgAssignIntrinsic *dbgAssign) {
+            // Convert all operands for DbgAssignIntrinsic
+
+            // Get the assignment ID (operand 3) and preserve the mapping
+            auto *assignIdNodeAsVal =
+                cast<llvm::MetadataAsValue>(dbgAssign->getArgOperand(3));
+            auto *assignIdNode =
+                cast<llvm::DIAssignID>(assignIdNodeAsVal->getMetadata());
+
+            // Check if we've already converted this DIAssignID to preserve
+            // assignment tracking
+            DIAssignIDAttr assignIdAttr;
+            auto it = assignIDMapping.find(assignIdNode);
+            if (it != assignIDMapping.end()) {
+              assignIdAttr = it->second;
+            } else {
+              // Create a new DIAssignIDAttr with distinct ID for this
+              // DIAssignID
+              DistinctAttr distinctId =
+                  DistinctAttr::create(UnitAttr::get(context));
+              assignIdAttr = DIAssignIDAttr::get(context, distinctId);
+              assignIDMapping[assignIdNode] = assignIdAttr;
+            }
+
+            // Get the address operand (operand 4)
+            FailureOr<Value> addressOperand =
+                convertMetadataValue(dbgAssign->getArgOperand(4));
+            if (failed(addressOperand))
+              return (Operation *)nullptr;
+
+            // Get the address expression (operand 5)
+            auto *addressExprNodeAsVal =
+                cast<llvm::MetadataAsValue>(dbgAssign->getArgOperand(5));
+            auto *addressExprNode =
+                cast<llvm::DIExpression>(addressExprNodeAsVal->getMetadata());
+            auto addressExprAttr =
+                debugImporter->translateExpression(addressExprNode);
+
+            return builder
+                .create<LLVM::DbgAssignOp>(loc, *argOperand, localVariableAttr,
+                                           locationExprAttr, assignIdAttr,
+                                           *addressOperand, addressExprAttr)
+                .getOperation();
           });
   mapNoResultOp(dbgIntr, op);
   setNonDebugMetadataAttrs(dbgIntr, op);
