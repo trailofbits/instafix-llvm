@@ -681,6 +681,22 @@ def LLVM_DbgValueOp : LLVM_DbgIntrOp<"dbg.value", "value",
   );
 }
 
+def LLVM_DbgAssignOp : LLVM_DbgIntrOp<"dbg.assign", "value"> {
+  let summary = "Describes how the value relates to a source language variable with assignment tracking.";
+  let arguments = (ins
+    LLVM_Type:$value,
+    LLVM_DILocalVariableAttr:$varInfo,
+    DefaultValuedAttr<LLVM_DIExpressionAttr, "{}">:$locationExpr,
+    LLVM_DIAssignIDAttr:$assignId,
+    LLVM_AnyPointer:$address,
+    DefaultValuedAttr<LLVM_DIExpressionAttr, "{}">:$addressExpr
+  );
+  let assemblyFormat = [{
+    qualified($varInfo) (qualified($locationExpr)^)? qualified($assignId) 
+    (qualified($addressExpr)^)? `=` $value `,` $address `:` qualified(type($value)) `,` qualified(type($address)) attr-dict
+  }];
+}
+
 def LLVM_DbgLabelOp : LLVM_IntrOp<"dbg.label", [], [], [], 0> {
   let summary = "Relates the program to a debug information label.";
   let arguments = (ins LLVM_DILabelAttr:$label);
