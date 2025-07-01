@@ -24,6 +24,7 @@ namespace llvm {
 class BasicBlock;
 class CallBase;
 class DbgVariableIntrinsic;
+class DIAssignID;
 class Function;
 class Instruction;
 class Value;
@@ -308,6 +309,7 @@ private:
     noResultOpMapping.clear();
     blockMapping.clear();
     debugIntrinsics.clear();
+    assignIDMapping.clear();
   }
   /// Sets the constant insertion point to the start of the given block.
   void setConstantInsertionPointToStart(Block *block) {
@@ -494,6 +496,9 @@ private:
   /// Mapping between LLVM comdat structs and symbol references to LLVM dialect
   /// comdat selector operations corresponding to these structs.
   DenseMap<const llvm::Comdat *, SymbolRefAttr> comdatMapping;
+  /// Mapping between LLVM DIAssignID metadata nodes and MLIR DIAssignIDAttr
+  /// attributes to preserve assignment tracking relationships.
+  DenseMap<const llvm::DIAssignID *, DIAssignIDAttr> assignIDMapping;
   /// The stateful type translator (contains named structs).
   LLVM::TypeFromLLVMIRTranslator typeTranslator;
   /// Stateful debug information importer.
