@@ -5,7 +5,7 @@ llvm.func internal @callee() -> !llvm.ptr attributes {dso_local} {
   llvm.return %0 : !llvm.ptr
 }
 
-llvm.mlir.alias external @foo_alias : !llvm.ptr {
+llvm.mlir.alias external @foo_alias : !llvm.func<ptr ()> {
   %0 = llvm.mlir.addressof @callee : !llvm.ptr
   llvm.return %0 : !llvm.ptr
 }
@@ -13,6 +13,24 @@ llvm.mlir.alias external @foo_alias : !llvm.ptr {
 llvm.mlir.alias external @_ZTV1D : !llvm.struct<(array<3 x ptr>)> {
   %0 = llvm.mlir.addressof @callee : !llvm.ptr
   llvm.return %0 : !llvm.ptr
+}
+
+llvm.func internal @caller() -> !llvm.ptr attributes {dso_local} {
+  %0 = llvm.call @foo_alias() : () -> !llvm.ptr
+  llvm.return %0 : !llvm.ptr
+}
+
+llvm.func @__gxx_personality_v0(...) -> i32
+
+llvm.func internal @invoker() -> !llvm.ptr attributes { dso_local, personality = @__gxx_personality_v0 } {
+  %0 = llvm.mlir.constant("\01") : !llvm.array<1 x i8>
+  %1 = llvm.mlir.zero : !llvm.ptr
+  %2 = llvm.invoke @foo_alias() to ^bb1 unwind ^bb2 : () -> !llvm.ptr
+^bb1:
+  llvm.return %1 : !llvm.ptr
+^bb2:
+  %3 = llvm.landingpad cleanup (catch %1 : !llvm.ptr) (catch %1 : !llvm.ptr) (filter %0 : !llvm.array<1 x i8>) : !llvm.struct<(ptr, i32)>
+  llvm.return %1 : !llvm.ptr
 }
 
 // CHECK: llvm.mlir.alias external @foo_alias : !llvm.ptr {

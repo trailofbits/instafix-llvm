@@ -302,9 +302,19 @@ convertOperationImpl(Operation &opInst, llvm::IRBuilderBase &builder,
     ArrayRef<llvm::Value *> operandsRef(operands);
     llvm::CallInst *call;
     if (auto attr = callOp.getCalleeAttr()) {
+      llvm::GlobalValue *callee;
+      llvm::FunctionType *ftype;
+      if (auto *func = moduleTranslation.lookupFunction(attr.getValue())) {
+        ftype = func->getFunctionType();
+        callee = func;
+      } else {
+        auto &st = moduleTranslation.symbolTable().getSymbolTable(callOp);
+        auto alias = st.lookup<AliasOp>(attr.getValue());
+        callee = moduleTranslation.lookupAlias(alias);
+        ftype = llvm::cast<llvm::FunctionType>(moduleTranslation.convertType(alias.getAliasType()));
+      }
       call =
-          builder.CreateCall(moduleTranslation.lookupFunction(attr.getValue()),
-                             operandsRef, opBundles);
+          builder.CreateCall(ftype, callee, operandsRef, opBundles);
     } else {
       llvm::FunctionType *calleeType = llvm::cast<llvm::FunctionType>(
           moduleTranslation.convertType(callOp.getCalleeFunctionType()));
@@ -415,8 +425,19 @@ convertOperationImpl(Operation &opInst, llvm::IRBuilderBase &builder,
     ArrayRef<llvm::Value *> operandsRef(operands);
     llvm::InvokeInst *result;
     if (auto attr = opInst.getAttrOfType<FlatSymbolRefAttr>("callee")) {
+      llvm::GlobalValue *callee;
+      llvm::FunctionType *ftype;
+      if (auto *func = moduleTranslation.lookupFunction(attr.getValue())) {
+        ftype = func->getFunctionType();
+        callee = func;
+      } else {
+        auto &st = moduleTranslation.symbolTable().getSymbolTable(invOp);
+        auto alias = st.lookup<AliasOp>(attr.getValue());
+        callee = moduleTranslation.lookupAlias(alias);
+        ftype = llvm::cast<llvm::FunctionType>(moduleTranslation.convertType(alias.getAliasType()));
+      }
       result = builder.CreateInvoke(
-          moduleTranslation.lookupFunction(attr.getValue()),
+          ftype, callee,
           moduleTranslation.lookupBlock(invOp.getSuccessor(0)),
           moduleTranslation.lookupBlock(invOp.getSuccessor(1)), operandsRef,
           opBundles);
