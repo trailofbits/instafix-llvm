@@ -138,14 +138,16 @@ static LogicalResult verifySymbolAttrUse(FlatSymbolRefAttr symbol,
                                          Operation *op,
                                          SymbolTableCollection &symbolTable) {
   StringRef name = symbol.getValue();
-  auto func =
-      symbolTable.lookupNearestSymbolFrom<LLVMFuncOp>(op, symbol.getAttr());
-  if (!func)
-    return op->emitOpError("'")
-           << name << "' does not reference a valid LLVM function";
-  if (func.isExternal())
-    return op->emitOpError("'") << name << "' does not have a definition";
-  return success();
+  auto *symOp = symbolTable.lookupNearestSymbolFrom(op, symbol.getAttr());
+  if (auto func = dyn_cast<LLVMFuncOp>(symOp)) {
+    if (func.isExternal())
+      return op->emitOpError("'") << name << "' does not have a definition";
+    return success();
+  }
+  if (auto alias = dyn_cast<AliasOp>(symOp))
+    return success();
+  return op->emitOpError("'")
+         << name << "' does not reference a valid LLVM function";
 }
 
 /// Returns a boolean type that has the same shape as `type`. It supports both
@@ -1241,14 +1243,16 @@ LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
       return emitOpError()
              << "'" << calleeName.getValue()
              << "' does not reference a symbol in the current scope";
-    auto fn = dyn_cast<LLVMFuncOp>(callee);
-    if (!fn)
+    if (auto fn = dyn_cast<LLVMFuncOp>(callee)) {
+      if (failed(verifyCallOpDebugInfo(*this, fn)))
+        return failure();
+      fnType = fn.getFunctionType();
+    } else if (auto alias = dyn_cast<AliasOp>(callee)) {
+      fnType = alias.getAliasType();
+    } else {
       return emitOpError() << "'" << calleeName.getValue()
                            << "' does not reference a valid LLVM function";
-
-    if (failed(verifyCallOpDebugInfo(*this, fn)))
-      return failure();
-    fnType = fn.getFunctionType();
+    }
   }
 
   LLVMFunctionType funcType = llvm::dyn_cast<LLVMFunctionType>(fnType);
