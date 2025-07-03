@@ -426,13 +426,20 @@ convertOperationImpl(Operation &opInst, llvm::IRBuilderBase &builder,
               moduleTranslation.lookupFunction(attr.getValue())) {
         call = builder.CreateCall(function, operandsRef, opBundles);
       } else {
-        Operation *moduleOp = parentLLVMModule(&opInst);
-        Operation *ifuncOp =
-            moduleTranslation.symbolTable().lookupSymbolIn(moduleOp, attr);
-        llvm::GlobalValue *ifunc = moduleTranslation.lookupIFunc(ifuncOp);
-        llvm::FunctionType *calleeType = llvm::cast<llvm::FunctionType>(
-            moduleTranslation.convertType(callOp.getCalleeFunctionType()));
-        call = builder.CreateCall(calleeType, ifunc, operandsRef, opBundles);
+        auto &st = moduleTranslation.symbolTable().getSymbolTable(callOp);
+        auto alias = st.lookup<AliasOp>(attr.getValue());
+        if (alias) {
+          llvm::GlobalValue *callee = moduleTranslation.lookupAlias(alias);
+          llvm::FunctionType *ftype = llvm::cast<llvm::FunctionType>(moduleTranslation.convertType(alias.getAliasType()));
+          call = builder.CreateCall(ftype, callee, operandsRef, opBundles);
+        } else {
+          Operation *moduleOp = parentLLVMModule(&opInst);
+          Operation *ifuncOp = st.lookupSymbolIn(moduleOp, attr);
+          llvm::GlobalValue *ifunc = moduleTranslation.lookupIFunc(ifuncOp);
+          llvm::FunctionType *calleeType = llvm::cast<llvm::FunctionType>(
+              moduleTranslation.convertType(callOp.getCalleeFunctionType()));
+          call = builder.CreateCall(calleeType, ifunc, operandsRef, opBundles);
+        }
       }
     } else {
       llvm::FunctionType *calleeType = llvm::cast<llvm::FunctionType>(
@@ -554,8 +561,19 @@ convertOperationImpl(Operation &opInst, llvm::IRBuilderBase &builder,
     ArrayRef<llvm::Value *> operandsRef(operands);
     llvm::InvokeInst *result;
     if (auto attr = opInst.getAttrOfType<FlatSymbolRefAttr>("callee")) {
+      llvm::GlobalValue *callee;
+      llvm::FunctionType *ftype;
+      if (auto *func = moduleTranslation.lookupFunction(attr.getValue())) {
+        ftype = func->getFunctionType();
+        callee = func;
+      } else {
+        auto &st = moduleTranslation.symbolTable().getSymbolTable(invOp);
+        auto alias = st.lookup<AliasOp>(attr.getValue());
+        callee = moduleTranslation.lookupAlias(alias);
+        ftype = llvm::cast<llvm::FunctionType>(moduleTranslation.convertType(alias.getAliasType()));
+      }
       result = builder.CreateInvoke(
-          moduleTranslation.lookupFunction(attr.getValue()),
+          ftype, callee,
           moduleTranslation.lookupBlock(invOp.getSuccessor(0)),
           moduleTranslation.lookupBlock(invOp.getSuccessor(1)), operandsRef,
           opBundles);
