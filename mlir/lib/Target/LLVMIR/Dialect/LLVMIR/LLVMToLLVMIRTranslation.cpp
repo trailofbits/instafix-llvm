@@ -426,7 +426,8 @@ convertOperationImpl(Operation &opInst, llvm::IRBuilderBase &builder,
               moduleTranslation.lookupFunction(attr.getValue())) {
         call = builder.CreateCall(function, operandsRef, opBundles);
       } else {
-        auto &st = moduleTranslation.symbolTable().getSymbolTable(callOp);
+        auto module = callOp->getParentOfType<ModuleOp>();
+        auto &st = moduleTranslation.symbolTable().getSymbolTable(module);
         auto alias = st.lookup<AliasOp>(attr.getValue());
         if (alias) {
           llvm::GlobalValue *callee = moduleTranslation.lookupAlias(alias);
@@ -567,7 +568,8 @@ convertOperationImpl(Operation &opInst, llvm::IRBuilderBase &builder,
         ftype = func->getFunctionType();
         callee = func;
       } else {
-        auto &st = moduleTranslation.symbolTable().getSymbolTable(invOp);
+        auto module = invOp->getParentOfType<ModuleOp>();
+        auto &st = moduleTranslation.symbolTable().getSymbolTable(module);
         auto alias = st.lookup<AliasOp>(attr.getValue());
         callee = moduleTranslation.lookupAlias(alias);
         ftype = llvm::cast<llvm::FunctionType>(moduleTranslation.convertType(alias.getAliasType()));
