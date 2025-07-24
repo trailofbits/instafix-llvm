@@ -1802,11 +1802,11 @@ LogicalResult ModuleImport::convertInstruction(llvm::Instruction *inst) {
         return failure();
 
       FlatSymbolRefAttr callee = nullptr;
-      if (isIncompatibleCall) {
+      FlatSymbolRefAttr calleeSym = convertCalleeName(callInst);
+      if (calleeSym) {
         // Use an indirect call (in order to represent valid and verifiable LLVM
         // IR). Build the indirect call by passing an empty `callee` operand and
         // insert into `operands` to include the indirect call target.
-        FlatSymbolRefAttr calleeSym = convertCalleeName(callInst);
         Value indirectCallVal = builder.create<LLVM::AddressOfOp>(
             loc, LLVM::LLVMPointerType::get(context), calleeSym);
         operands->insert(operands->begin(), indirectCallVal);
