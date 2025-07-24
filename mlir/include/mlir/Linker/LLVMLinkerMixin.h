@@ -183,8 +183,8 @@ public:
     bool alreadyDeclared =
         alreadyDefinedOrDeclared && derived.isDeclaration(pair.dst);
 
-    // Don't import globals that are already declared
-    if (derived.shouldLinkOnlyNeeded() && !alreadyDeclared)
+    // Don't import globals that are already defined
+    if (derived.shouldLinkOnlyNeeded() && !alreadyDeclared && !forDependency)
       return false;
 
     // Private dependencies are gonna be renamed and linked

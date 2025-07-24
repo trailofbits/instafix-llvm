@@ -40,8 +40,19 @@ ModuleLinkerInterface *Linker::getModuleLinkerInterface(ModuleOp op) {
 }
 
 LogicalResult Linker::addModule(OwningOpRef<ModuleOp> src) {
-  unsigned flags = getFlags();
+  return addModule(std::move(src), getFlags());
+}
 
+LogicalResult Linker::addModule(OwningOpRef<ModuleOp> src, bool onlyNeeded) {
+  unsigned flags = getFlags();
+  if (onlyNeeded)
+    flags |= LinkerFlags::LinkOnlyNeeded;
+  else
+    flags &= ~LinkerFlags::LinkOnlyNeeded;
+  return addModule(std::move(src), flags);
+}
+
+LogicalResult Linker::addModule(OwningOpRef<ModuleOp> src, unsigned flags) {
   ModuleOp mod = [&] {
     if (options.shouldKeepModulesAlive()) {
       modules.push_back(std::move(src));

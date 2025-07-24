@@ -59,8 +59,9 @@ public:
   Linker(MLIRContext *context, const LinkerOptions &options = {})
       : context(context), options(options) {}
 
-  /// Add a module to be linked
   LogicalResult addModule(OwningOpRef<ModuleOp> src);
+
+  LogicalResult addModule(OwningOpRef<ModuleOp> src, bool onlyNeeded);
 
   /// Perform linking and materialization in the destination module.
   /// Returns the linked module.
@@ -71,15 +72,18 @@ public:
   LogicalResult emitFileError(const Twine &fileName, const Twine &message);
   LogicalResult emitError(const Twine &message);
 
+  /// Return the flags controlling the linker behavior for the current module
+  unsigned getFlags() const;
+
 private:
   /// Setup the linker based on the first module
   LogicalResult initializeLinker(ModuleOp src);
 
+  /// Add a module to be linked
+  LogicalResult addModule(OwningOpRef<ModuleOp> src, unsigned flags);
+
   /// Obtain the linker interface for the given module
   ModuleLinkerInterface *getModuleLinkerInterface(ModuleOp op);
-
-  /// Return the flags controlling the linker behavior for the current module
-  unsigned getFlags() const;
 
   /// Preprocess the given module before linking with the given flags
   LogicalResult summarize(ModuleOp src, unsigned flags);
