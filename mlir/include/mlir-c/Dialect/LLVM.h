@@ -265,7 +265,7 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirLLVMDICompositeTypeAttrGet(
 /// and non-negative values indicate a value present.
 MLIR_CAPI_EXPORTED MlirAttribute mlirLLVMDIDerivedTypeAttrGet(
     MlirContext ctx, unsigned int tag, MlirAttribute name,
-    MlirAttribute baseType, uint64_t sizeInBits, uint32_t alignInBits,
+    MlirAttribute baseType, int64_t flags, uint64_t sizeInBits, uint32_t alignInBits,
     uint64_t offsetInBits, int64_t dwarfAddressSpace, MlirAttribute extraData);
 
 MLIR_CAPI_EXPORTED MlirAttribute mlirLLVMDIStringTypeAttrGet(
