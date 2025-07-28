@@ -432,6 +432,7 @@ def LLVM_DIDerivedTypeAttr : LLVM_Attr<"DIDerivedType", "di_derived_type",
                                        /*traits=*/[], "DITypeAttr"> {
   let parameters = (ins
     LLVM_DITagParameter:$tag,
+    "DIFlags":$flags,
     OptionalParameter<"StringAttr">:$name,
     OptionalParameter<"DITypeAttr">:$baseType,
     OptionalParameter<"uint64_t">:$sizeInBits,

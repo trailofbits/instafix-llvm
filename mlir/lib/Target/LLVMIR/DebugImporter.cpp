@@ -106,9 +106,11 @@ DIDerivedTypeAttr DebugImporter::translateImpl(llvm::DIDerivedType *node) {
     return nullptr;
   DINodeAttr extraData =
       translate(dyn_cast_or_null<llvm::DINode>(node->getExtraData()));
+  std::optional<DIFlags> flags = symbolizeDIFlags(node->getFlags());
   return DIDerivedTypeAttr::get(
-      context, node->getTag(), getStringAttrOrNull(node->getRawName()),
-      baseType, node->getSizeInBits(), node->getAlignInBits(),
+      context, node->getTag(), flags.value_or(DIFlags::Zero),
+      getStringAttrOrNull(node->getRawName()), baseType,
+      node->getSizeInBits(), node->getAlignInBits(),
       node->getOffsetInBits(), node->getDWARFAddressSpace(), extraData);
 }
 

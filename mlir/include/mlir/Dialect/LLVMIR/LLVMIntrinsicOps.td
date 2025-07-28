@@ -692,8 +692,8 @@ def LLVM_DbgAssignOp : LLVM_DbgIntrOp<"dbg.assign", "value"> {
     DefaultValuedAttr<LLVM_DIExpressionAttr, "{}">:$addressExpr
   );
   let assemblyFormat = [{
-    qualified($varInfo) (qualified($locationExpr)^)? qualified($assignId) 
-    (qualified($addressExpr)^)? `=` $value `,` $address `:` qualified(type($value)) `,` qualified(type($address)) attr-dict
+    qualified($varInfo) qualified($locationExpr) qualified($assignId)
+    qualified($addressExpr) `=` $value `,` $address `:` qualified(type($value)) `,` qualified(type($address)) attr-dict
   }];
 }
 
