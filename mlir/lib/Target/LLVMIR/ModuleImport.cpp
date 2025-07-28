@@ -3146,8 +3146,12 @@ ModuleImport::processDebugIntrinsic(llvm::DbgVariableIntrinsic *dbgIntr,
           isa<LandingpadOp>(insertionBlock->front()))
         insertPt = cast<LandingpadOp>(insertionBlock->front()).getRes();
     }
-
-    builder.setInsertionPointAfterValue(insertPt);
+    builder.setInsertionPointAfterValue(*argOperand);
+    auto insertionPoint = builder.getInsertionPoint();
+    Operation &insertionPointOp = *insertionPoint;
+    if (insertionPoint.isValid() && isa<LLVM::LandingpadOp>(&insertionPointOp)) {
+      builder.setInsertionPointAfter(&insertionPointOp);
+    }
   }
   auto locationExprAttr =
       debugImporter->translateExpression(dbgIntr->getExpression());
@@ -3208,6 +3212,15 @@ ModuleImport::processDebugIntrinsic(llvm::DbgVariableIntrinsic *dbgIntr,
                 cast<llvm::DIExpression>(addressExprNodeAsVal->getMetadata());
             auto addressExprAttr =
                 debugImporter->translateExpression(addressExprNode);
+
+            if (argOperand->getParentBlock() != addressOperand->getParentBlock()) {
+              return (Operation *)nullptr;
+            }
+
+            auto *addressOp = addressOperand->getDefiningOp();
+            if (addressOp && domInfo.dominates(*argOperand, addressOp)) {
+              builder.setInsertionPointAfter(addressOp);
+            }
 
             return builder
                 .create<LLVM::DbgAssignOp>(loc, *argOperand, localVariableAttr,
