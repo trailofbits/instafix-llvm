@@ -195,7 +195,7 @@ void LoopAnnotationConversion::convertLocation(FusedLoc location) {
     return;
   auto *localScope = dyn_cast<llvm::DILocalScope>(
       loopAnnotationTranslation.moduleTranslation.translateDebugInfo(
-          localScopeAttr));
+          localScopeAttr, nullptr));
   if (!localScope)
     return;
   llvm::Metadata *loc =
