@@ -1151,7 +1151,7 @@ LogicalResult ModuleTranslation::convertGlobalsAndAliases() {
       for (auto exprAttr :
            op.getDbgExprs()->getAsRange<DIGlobalVariableExpressionAttr>()) {
         llvm::DIGlobalVariableExpression *diGlobalExpr =
-            debugTranslation->translateGlobalVariableExpression(exprAttr);
+            debugTranslation->translateGlobalVariableExpression(exprAttr, nullptr);
         llvm::DIGlobalVariable *diGlobalVar = diGlobalExpr->getVariable();
         var->addDebugInfo(diGlobalExpr);
 
@@ -1846,7 +1846,7 @@ LogicalResult ModuleTranslation::convertFunctionSignatures() {
       llvmFunc->setAlignment(llvm::MaybeAlign(*alignment));
 
     // Translate the debug information for this function.
-    debugTranslation->translate(function, *llvmFunc);
+    debugTranslation->translate(function, *llvmFunc, nullptr);
   }
 
   return success();
@@ -2217,18 +2217,18 @@ llvm::DILocation *ModuleTranslation::translateLoc(Location loc,
 }
 
 llvm::DIExpression *
-ModuleTranslation::translateExpression(LLVM::DIExpressionAttr attr) {
-  return debugTranslation->translateExpression(attr);
+ModuleTranslation::translateExpression(LLVM::DIExpressionAttr attr, llvm::DIScope *scope) {
+  return debugTranslation->translateExpression(attr, scope);
 }
 
 llvm::DIGlobalVariableExpression *
 ModuleTranslation::translateGlobalVariableExpression(
-    LLVM::DIGlobalVariableExpressionAttr attr) {
-  return debugTranslation->translateGlobalVariableExpression(attr);
+    LLVM::DIGlobalVariableExpressionAttr attr, llvm::DIScope *scope) {
+  return debugTranslation->translateGlobalVariableExpression(attr, scope);
 }
 
-llvm::Metadata *ModuleTranslation::translateDebugInfo(LLVM::DINodeAttr attr) {
-  return debugTranslation->translate(attr);
+llvm::Metadata *ModuleTranslation::translateDebugInfo(LLVM::DINodeAttr attr, llvm::DIScope *scope) {
+  return debugTranslation->translate(attr, scope);
 }
 
 llvm::RoundingMode
