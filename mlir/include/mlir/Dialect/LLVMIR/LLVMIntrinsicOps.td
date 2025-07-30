@@ -643,8 +643,8 @@ class LLVM_DbgIntrOp<string name, string argName, list<Trait> traits = []>
     builder.CreateCall(fn, {
         llvm::MetadataAsValue::get(ctx,
             llvm::ValueAsMetadata::get(moduleTranslation.lookupValue(opInst.getOperand(0)))),
-        llvm::MetadataAsValue::get(ctx, moduleTranslation.translateDebugInfo($varInfo)),
-        llvm::MetadataAsValue::get(ctx, moduleTranslation.translateExpression($locationExpr)),
+        llvm::MetadataAsValue::get(ctx, moduleTranslation.translateDebugInfo($varInfo, nullptr)),
+        llvm::MetadataAsValue::get(ctx, moduleTranslation.translateExpression($locationExpr, nullptr)),
       });
   }];
   let mlirBuilder = [{
@@ -709,7 +709,7 @@ def LLVM_DbgLabelOp : LLVM_IntrOp<"dbg.label", [], [], [], 0> {
     llvm::Function *fn =
       llvm::Intrinsic::getOrInsertDeclaration(module, llvm::Intrinsic::dbg_label);
     builder.CreateCall(fn, {
-        llvm::MetadataAsValue::get(ctx, moduleTranslation.translateDebugInfo($label))
+        llvm::MetadataAsValue::get(ctx, moduleTranslation.translateDebugInfo($label, nullptr))
       });
   }];
   let mlirBuilder = [{
