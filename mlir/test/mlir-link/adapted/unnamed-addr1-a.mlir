@@ -1,7 +1,4 @@
-// RUN: mlir-link %s %S/unnamed-addr1-b.ll -o - | FileCheck %s
-
-// llvm.mlir.alias not yet supported
-// XFAIL: *
+// RUN: mlir-link %s %S/unnamed-addr1-b.mlir -o - | FileCheck %s
 
 module {
   // CHECK-DAG: llvm.mlir.global common @"global-a"(0 : i32)
@@ -28,7 +25,7 @@ module {
   // CHECK-DAG: llvm.mlir.alias external unnamed_addr @"alias-b" : i32 {
   llvm.mlir.global weak unnamed_addr @"alias-b"(42 : i32) {addr_space = 0 : i32} : i32
 
-  // CHECK-DAG: llvm.mlir.global common @"global-g"(0: i32)
+  // CHECK-DAG: llvm.mlir.global common @"global-g"(0 : i32)
   llvm.mlir.global common unnamed_addr @"global-g"(0 : i32) {addr_space = 0 : i32} : i32
 
   // CHECK-DAG: llvm.mlir.global external @"global-h"(42 : i32)
