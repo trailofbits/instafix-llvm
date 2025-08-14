@@ -22,6 +22,7 @@ public:
   static UnnamedAddr getUnnamedAddr(Operation *op);
   static void setUnnamedAddr(Operation *op, UnnamedAddr val);
   static std::optional<uint64_t> getAlignment(Operation *op);
+  static void setAlignment(Operation *op, std::optional<uint64_t>);
   static bool isConstant(Operation *op);
   static llvm::StringRef getSection(Operation *op);
   static uint32_t getAddressSpace(Operation *op);
