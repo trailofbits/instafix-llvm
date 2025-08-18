@@ -37,7 +37,8 @@ enum LinkerFlags {
 class LinkState {
 public:
   LinkState(ModuleOp dst)
-      : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()) {}
+      : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()),
+        symbolTableCollection(), moduleMaps() {}
 
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
@@ -49,14 +50,21 @@ public:
   LinkState nest(ModuleOp submod) const;
 
   IRMapping &getMapping();
+  SymbolTableCollection &getSymbolTableCollection() {
+    return symbolTableCollection;
+  }
+  SymbolUserMap &getSymbolUserMap(ModuleOp mod);
 
 private:
   // Private constructor used by nest()
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
-      : mapping(std::move(mapping)), builder(dst.getBodyRegion()) {}
+      : mapping(std::move(mapping)), builder(dst.getBodyRegion()),
+        symbolTableCollection(), moduleMaps() {}
 
   std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;
+  SymbolTableCollection symbolTableCollection;
+  DenseMap<ModuleOp, SymbolUserMap> moduleMaps;
 };
 
 struct Conflict {
