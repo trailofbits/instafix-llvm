@@ -53,7 +53,10 @@ LinkState LinkState::nest(ModuleOp submod) const {
   return LinkState(submod, mapping);
 }
 
-IRMapping &LinkState::getMapping() { return *mapping.get(); }
+IRMapping &LinkState::getMapping() { return *mapping; }
+SymbolUserMap &LinkState::getSymbolUserMap(ModuleOp mod) {
+  return moduleMaps.try_emplace(mod, symbolTableCollection, mod).first->second;
+}
 
 //===----------------------------------------------------------------------===//
 // SymbolAttrLinkerInterface
@@ -83,21 +86,17 @@ static void renameSymbolRefIn(Operation *op, StringAttr newName) {
 static LogicalResult renameRemappedUsersOf(Operation *op, StringAttr newName,
                                            LinkState &state) {
   ModuleOp module = op->getParentOfType<ModuleOp>();
+  SymbolUserMap &userMap = state.getSymbolUserMap(module);
   // TODO: use something like SymbolTableAnalysis
-  SymbolTable src(module);
-  if (auto uses = src.getSymbolUses(op, module)) {
-    for (SymbolTable::SymbolUse use : *uses) {
-      // TODO: add test where user is not remapped
-      Operation *dstUser = state.remapped(use.getUser());
-      if (!dstUser)
-        continue;
-      renameSymbolRefIn(dstUser, newName);
-    }
-
-    return success();
+  auto users = userMap.getUsers(op);
+  for (Operation *user : users) {
+    // TODO: add test where user is not remapped
+    Operation *dstUser = state.remapped(user);
+    if (!dstUser)
+      continue;
+    renameSymbolRefIn(dstUser, newName);
   }
-
-  return op->emitError("failed to rename symbol to a unique name");
+  return success();
 }
 
 StringRef SymbolAttrLinkerInterface::getSymbol(Operation *op) const {
@@ -119,7 +118,8 @@ void SymbolAttrLinkerInterface::registerForLink(Operation *op) {
 }
 
 LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) const {
-  SymbolTable st(state.getDestinationOp());
+  SymbolTable &st =
+      state.getSymbolTableCollection().getSymbolTable(state.getDestinationOp());
 
   auto materializeError = [&](Operation *op) {
     return op->emitError("failed to materialize symbol for linking");
@@ -145,7 +145,7 @@ LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) const {
     if (st.lookup(name)) {
       StringAttr newName = getUniqueNameIn(st, name);
       st.setSymbolName(materialized, newName);
-      toRenameUsers.push_back({op, newName});
+      toRenameUsers.emplace_back(op, newName);
     }
 
     st.insert(materialized);
