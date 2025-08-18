@@ -161,11 +161,11 @@ LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) const {
   return success();
 }
 
-SmallVector<Operation *>
-SymbolAttrLinkerInterface::dependencies(Operation *op) const {
+SmallVector<Operation *> SymbolAttrLinkerInterface::dependencies(
+    Operation *op, SymbolTableCollection &collection) const {
   // TODO: use something like SymbolTableAnalysis
   Operation *module = op->getParentOfType<ModuleOp>();
-  SymbolTable st(module);
+  SymbolTable &st = collection.getSymbolTable(module);
   SmallVector<Operation *> result;
   op->walk([&](SymbolUserOpInterface user) {
     if (user.getOperation() == op)

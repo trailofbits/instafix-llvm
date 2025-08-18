@@ -256,10 +256,10 @@ LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
   return SymbolAttrLinkerInterface::materialize(src, state);
 }
 
-SmallVector<Operation *>
-LLVM::LLVMSymbolLinkerInterface::dependencies(Operation *op) const {
+SmallVector<Operation *> LLVM::LLVMSymbolLinkerInterface::dependencies(
+    Operation *op, SymbolTableCollection &collection) const {
   Operation *module = op->getParentOfType<ModuleOp>();
-  SymbolTable st(module);
+  SymbolTable &st = collection.getSymbolTable(module);
   SmallVector<Operation *> result;
 
   auto insertDepIfExists = [&](auto symbolRef) -> void {
