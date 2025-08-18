@@ -144,7 +144,8 @@ public:
   }
 
   /// Dependencies of the given operation required to be linked.
-  virtual SmallVector<Operation *> dependencies(Operation *op) const = 0;
+  virtual SmallVector<Operation *>
+  dependencies(Operation *op, SymbolTableCollection &collection) const = 0;
 
   void setFlags(unsigned flags) { this->flags = flags; }
 
@@ -199,7 +200,8 @@ public:
   virtual LogicalResult verifyLinkageCompatibility(Conflict pair) const = 0;
 
   /// Dependencies of the given operation required to be linked.
-  SmallVector<Operation *> dependencies(Operation *op) const override;
+  SmallVector<Operation *>
+  dependencies(Operation *op, SymbolTableCollection &collection) const override;
 
 protected:
   // Operations that are to be linked with the original name.

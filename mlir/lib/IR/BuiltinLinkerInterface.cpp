@@ -68,7 +68,7 @@ public:
       linker->registerForLink(op);
     }
 
-    for (Operation *dep : linker->dependencies(op)) {
+    for (Operation *dep : linker->dependencies(op, symbolTableCollection)) {
       if (summarize(dep, flags, /*forDependency=*/true).failed())
         return failure();
     }
@@ -87,6 +87,7 @@ public:
 
 private:
   SymbolLinkerInterfaces symbolLinkers;
+  SymbolTableCollection symbolTableCollection;
 };
 
 //===----------------------------------------------------------------------===//
