@@ -54,7 +54,7 @@ LinkState LinkState::nest(ModuleOp submod) const {
 }
 
 IRMapping &LinkState::getMapping() { return *mapping; }
-SymbolUserMap &LinkState::getSymbolUserMap(Operation *mod) {
+SymbolUserMap &LinkState::getSymbolUserMap(ModuleOp mod) {
   return moduleMaps.try_emplace(mod, symbolTableCollection, mod).first->second;
 }
 

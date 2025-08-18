@@ -53,7 +53,7 @@ public:
   SymbolTableCollection &getSymbolTableCollection() {
     return symbolTableCollection;
   }
-  SymbolUserMap &getSymbolUserMap(Operation *mod);
+  SymbolUserMap &getSymbolUserMap(ModuleOp mod);
 
 private:
   // Private constructor used by nest()
@@ -64,7 +64,7 @@ private:
   std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;
   SymbolTableCollection symbolTableCollection;
-  DenseMap<Operation *, SymbolUserMap> moduleMaps;
+  DenseMap<ModuleOp, SymbolUserMap> moduleMaps;
 };
 
 struct Conflict {
