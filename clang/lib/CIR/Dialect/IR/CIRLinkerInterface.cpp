@@ -164,6 +164,13 @@ public:
     llvm_unreachable("unexpected operation");
   }
 
+  static void setAlignment(Operation *op, std::optional<uint64_t> align) {
+    if (auto gv = dyn_cast<cir::GlobalOp>(op))
+      return gv.setAlignment(align);
+    // FIXME: CIR does not (yet?) have alignment for functions
+    llvm_unreachable("unexpected operation");
+  }
+
   static bool isConstant(Operation *op) {
     if (auto gv = dyn_cast<cir::GlobalOp>(op))
       return gv.getConstant();

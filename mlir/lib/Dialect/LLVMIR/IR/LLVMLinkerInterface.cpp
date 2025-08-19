@@ -170,6 +170,17 @@ LLVM::LLVMSymbolLinkerInterface::getAlignment(Operation *op) {
   llvm_unreachable("unexpected operation");
 }
 
+void LLVM::LLVMSymbolLinkerInterface::setAlignment(
+    Operation *op, std::optional<uint64_t> align) {
+  if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
+    return gv.setAlignment(align);
+  if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
+    return fn.setAlignment(align);
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp>(op))
+    return;
+  llvm_unreachable("unexpected operation");
+}
+
 bool LLVM::LLVMSymbolLinkerInterface::isConstant(Operation *op) {
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
     return gv.getConstant();
