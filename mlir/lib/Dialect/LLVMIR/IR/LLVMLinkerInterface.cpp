@@ -165,8 +165,9 @@ LLVM::LLVMSymbolLinkerInterface::getAlignment(Operation *op) {
     return gv.getAlignment();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getAlignment();
-  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp>(op))
-    return {};
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp,
+          LLVM::ComdatOp>(op))
+    return std::nullopt;
   llvm_unreachable("unexpected operation");
 }
 
@@ -176,7 +177,8 @@ void LLVM::LLVMSymbolLinkerInterface::setAlignment(
     return gv.setAlignment(align);
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.setAlignment(align);
-  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp>(op))
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp,
+          LLVM::ComdatOp>(op))
     return;
   llvm_unreachable("unexpected operation");
 }
