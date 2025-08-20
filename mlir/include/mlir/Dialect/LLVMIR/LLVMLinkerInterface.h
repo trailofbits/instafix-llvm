@@ -39,8 +39,8 @@ public:
       if (auto found = append.find("llvm.global_ctors"); found != append.end())
         toLink = append.find("llvm.global_ctors")->second;
     } else if constexpr (std::is_same<LLVM::GlobalDtorsOp, structor_t>()) {
-      if (auto found = append.find("llvm.global_ctors"); found != append.end())
-        toLink = append.find("llvm.global_ctors")->second;
+      if (auto found = append.find("llvm.global_dtors"); found != append.end())
+        toLink = append.find("llvm.global_dtors")->second;
     }
 
     std::vector<Attribute> newStructorList;
@@ -82,12 +82,19 @@ public:
       }
     }
 
-    auto cloned = state.clone(toLink.back());
+    auto ctx = state.getDestinationOp()->getContext();
     auto newStructorsAttr =
-        mlir::ArrayAttr::get(cloned->getContext(), newStructorList);
+        mlir::ArrayAttr::get(ctx, newStructorList);
     auto newPrioritiesAttr =
-        mlir::ArrayAttr::get(cloned->getContext(), newPriorities);
-    auto newDataAttr = mlir::ArrayAttr::get(cloned->getContext(), newData);
+        mlir::ArrayAttr::get(ctx, newPriorities);
+    auto newDataAttr = mlir::ArrayAttr::get(ctx, newData);
+
+    Operation *cloned;
+    if (toLink.empty()) {
+      cloned = state.create<structor_t>(UnknownLoc::get(ctx), newStructorsAttr, newPrioritiesAttr, newDataAttr);
+    } else {
+      cloned = state.clone(toLink.back());
+    }
 
     if constexpr (std::is_same<LLVM::GlobalCtorsOp, structor_t>()) {
       auto ctor = cast<LLVM::GlobalCtorsOp>(cloned);
