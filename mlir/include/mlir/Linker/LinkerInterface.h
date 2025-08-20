@@ -55,6 +55,11 @@ public:
   }
   SymbolUserMap &getSymbolUserMap(ModuleOp mod);
 
+  template<typename Op, typename... Args>
+  auto create(Location location, Args&&... args) {
+    return builder.create<Op>(location, std::forward<Args>(args)...);
+  }
+
 private:
   // Private constructor used by nest()
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
