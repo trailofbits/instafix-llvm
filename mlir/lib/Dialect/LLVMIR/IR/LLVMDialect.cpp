@@ -4001,8 +4001,7 @@ LogicalResult LLVMDialect::verifyParameterAttribute(Operation *op,
   // Check an integer attribute that is attached to a pointer value.
   if (name == LLVMDialect::getAlignAttrName() ||
       name == LLVMDialect::getDereferenceableAttrName() ||
-      name == LLVMDialect::getDereferenceableOrNullAttrName() ||
-      name == LLVMDialect::getStackAlignmentAttrName()) {
+      name == LLVMDialect::getDereferenceableOrNullAttrName()) {
     if (failed(checkIntegerAttrType()))
       return failure();
     if (verifyValueType && failed(checkPointerType()))
