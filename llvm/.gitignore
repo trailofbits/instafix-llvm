@@ -66,3 +66,6 @@ docs/_build
 .sw?
 #OS X specific files.
 .DS_store
+#Temp files specific to instafix-llvm
+out
+CMakePresets.json
