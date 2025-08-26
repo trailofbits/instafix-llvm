@@ -4392,7 +4392,7 @@ def CopyOp : CIR_Op<"copy",
   let arguments = (ins Arg<CIR_PointerType, "", [MemWrite]>:$dst,
                        Arg<CIR_PointerType, "", [MemRead]>:$src,
                        UnitAttr:$is_volatile,
-                       OptionalAttr<CIR_TBAAAttr>:$tbaa);
+                       OptionalAttr<CIR_AnyTBAAAttr>:$tbaa);
   let summary = "Copies contents from a CIR pointer to another";
   let description = [{
     Given two CIR pointers, `src` and `dst`, `cir.copy` will copy the memory
