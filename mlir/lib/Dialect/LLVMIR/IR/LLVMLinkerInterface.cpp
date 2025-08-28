@@ -186,7 +186,7 @@ void LLVM::LLVMSymbolLinkerInterface::setAlignment(
 bool LLVM::LLVMSymbolLinkerInterface::isConstant(Operation *op) {
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
     return gv.getConstant();
-  if (isa<LLVM::AliasOp>(op))
+  if (isa<LLVM::AliasOp, LLVM::ComdatOp>(op))
     return true;
   if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
     return false;
@@ -202,7 +202,8 @@ llvm::StringRef LLVM::LLVMSymbolLinkerInterface::getSection(Operation *op) {
     auto section = fn.getSection();
     return section ? section.value() : llvm::StringRef();
   }
-  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp>(op))
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp,
+          LLVM::ComdatOp>(op))
     return llvm::StringRef();
   llvm_unreachable("unexpected operation");
 }
@@ -214,7 +215,7 @@ uint32_t LLVM::LLVMSymbolLinkerInterface::getAddressSpace(Operation *op) {
   if (auto alias = dyn_cast<LLVM::AliasOp>(op)) {
     return alias.getAddrSpace();
   }
-  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::ComdatOp>(op))
     return 0;
   llvm_unreachable("unexpected operation");
 }
