@@ -2499,6 +2499,10 @@ public:
   mlir::LogicalResult emitWhileStmt(const clang::WhileStmt &S);
 
   mlir::Value emitX86BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
+  // Fallback support for unsupported intrinsics
+  mlir::Value emitX86IntrinsicFallback(unsigned BuiltinID, const CallExpr *E,
+                                       llvm::ArrayRef<mlir::Value> Ops);
+  std::string convertBuiltinToIntrinsicName(llvm::StringRef builtinName);
 
   /// CIR build helpers
   /// -----------------
