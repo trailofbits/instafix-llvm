@@ -66,5 +66,3 @@ docs/_build
 .sw?
 #OS X specific files.
 .DS_store
-CMakePresets.json
-out/
