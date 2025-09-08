@@ -39,8 +39,8 @@ public:
       if (auto found = append.find("llvm.global_ctors"); found != append.end())
         toLink = append.find("llvm.global_ctors")->second;
     } else if constexpr (std::is_same<LLVM::GlobalDtorsOp, structor_t>()) {
-      if (auto found = append.find("llvm.global_ctors"); found != append.end())
-        toLink = append.find("llvm.global_ctors")->second;
+      if (auto found = append.find("llvm.global_dtors"); found != append.end())
+        toLink = append.find("llvm.global_dtors")->second;
     }
 
     std::vector<Attribute> newStructorList;
@@ -80,6 +80,15 @@ public:
         newStructorList.push_back(structorList[idx]);
         newPriorities.push_back(priorities[idx]);
       }
+    }
+
+    // Fix: toLink is initialized as empty ArrayRef and may remain empty if the append
+    // map doesn't contain "llvm.global_ctors". Calling toLink.back() on empty ArrayRef
+    // triggers assertion failure in ArrayRef.h:178. This occurs during MLIR linking
+    // when processing modules that don't have global constructors/destructors.
+    // Return nullptr to indicate no operation to process, which is handled by callers.
+    if (toLink.empty()) {
+      return nullptr;
     }
 
     auto cloned = state.clone(toLink.back());
