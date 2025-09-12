@@ -340,27 +340,36 @@ public:
       return ConflictResolution::LinkFromSrc;
     }
 
-    std::optional<ComdatSelector> srcComdatSel = derived.getComdatSelector(pair.src);
-    std::optional<ComdatSelector> dstComdatSel = derived.getComdatSelector(pair.dst);
+    std::optional<ComdatSelector> srcComdatSel =
+        derived.getComdatSelector(pair.src);
+    std::optional<ComdatSelector> dstComdatSel =
+        derived.getComdatSelector(pair.dst);
     if (srcComdatSel.has_value() && dstComdatSel.has_value()) {
       auto srcComdatName = srcComdatSel->name;
       auto dstComdatName = dstComdatSel->name;
       auto srcComdat = srcComdatSel->kind;
       auto dstComdat = dstComdatSel->kind;
       if (srcComdatName != dstComdatName) {
-          llvm_unreachable("Comdat selector names don't match");
+        llvm_unreachable("Comdat selector names don't match");
       }
       if (srcComdat != dstComdat) {
-          llvm_unreachable("Comdat selector kinds don't match");
+        llvm_unreachable("Comdat selector kinds don't match");
       }
 
       if (srcComdat == mlir::LLVM::comdat::Comdat::Any) {
-          return ConflictResolution::LinkFromDst;
+        return ConflictResolution::LinkFromDst;
       }
       if (srcComdat == mlir::LLVM::comdat::Comdat::NoDeduplicate) {
-          return ConflictResolution::Failure;
+        return ConflictResolution::Failure;
       }
       llvm_unreachable("unimplemented comdat kind");
+    }
+
+    // If we reach here, we have two external definitions that can't be resolved
+    // This is typically an error case in LLVM linking
+    if (isExternalLinkage(srcLinkage) && isExternalLinkage(dstLinkage) &&
+        !srcIsDeclaration && !dstIsDeclaration) {
+      return ConflictResolution::Failure;
     }
 
     llvm_unreachable("unimplemented conflict resolution");
