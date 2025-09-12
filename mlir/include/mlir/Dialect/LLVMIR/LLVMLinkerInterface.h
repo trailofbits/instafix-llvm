@@ -50,7 +50,7 @@ public:
     for (auto op : toLink) {
       auto structor = dyn_cast<structor_t>(op);
       if (!structor)
-        llvm_unreachable("invali global structor operation");
+        llvm_unreachable("invalid global structor operation");
 
       ArrayRef<Attribute> structorList;
       if constexpr (std::is_same<LLVM::GlobalCtorsOp, structor_t>()) {

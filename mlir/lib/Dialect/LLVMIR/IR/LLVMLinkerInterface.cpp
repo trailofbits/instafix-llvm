@@ -85,9 +85,9 @@ static bool hasComdat(Operation *op) {
 static SymbolRefAttr getComdatSymbol(Operation *op) {
   assert(hasComdat(op) && "Operation with Comdat expected");
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
-      return gv.getComdat().value();
+    return gv.getComdat().value();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
-      return fn.getComdat().value();
+    return fn.getComdat().value();
   llvm_unreachable("unexpected operation");
 }
 
@@ -95,13 +95,15 @@ bool LLVM::LLVMSymbolLinkerInterface::isComdat(Operation *op) {
   return isa<LLVM::ComdatOp>(op);
 }
 
-std::optional<mlir::link::ComdatSelector> LLVM::LLVMSymbolLinkerInterface::getComdatSelector(Operation *op) {
+std::optional<mlir::link::ComdatSelector>
+LLVM::LLVMSymbolLinkerInterface::getComdatSelector(Operation *op) {
   if (!hasComdat(op))
     return std::nullopt;
 
   auto symbol = getComdatSymbol(op);
   auto *symTabOp = SymbolTable::getNearestSymbolTable(op);
-  auto comdatSelector = cast<mlir::LLVM::ComdatSelectorOp>(SymbolTable::lookupSymbolIn(symTabOp, symbol));
+  auto comdatSelector = cast<mlir::LLVM::ComdatSelectorOp>(
+      SymbolTable::lookupSymbolIn(symTabOp, symbol));
   return {{comdatSelector.getSymName(), comdatSelector.getComdat()}};
 }
 
@@ -112,7 +114,8 @@ bool LLVM::LLVMSymbolLinkerInterface::isDeclaration(Operation *op) {
     return gv.getInitializerRegion().empty() && !gv.getValue();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getBody().empty();
-  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::ComdatOp, LLVM::AliasOp>(op))
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::ComdatOp,
+          LLVM::AliasOp>(op))
     return false;
   llvm_unreachable("unexpected operation");
 }
@@ -446,48 +449,50 @@ getAppendedOpWithInitRegion(llvm::ArrayRef<mlir::Operation *> globs,
   return targetGV;
 }
 
-static Operation *appendGlobalOps(ArrayRef<Operation *> globs, LLVM::GlobalOp lastGV, LinkState &state) {
+static Operation *appendGlobalOps(ArrayRef<Operation *> globs,
+                                  LLVM::GlobalOp lastGV, LinkState &state) {
   // Src ops that are declarations are ignored in favour of dst operation
   // This mimics the behaviour of linkAppendingVarProto in llvm-link
   if (globs.size() == 1)
-      return state.clone(globs.front());
+    return state.clone(globs.front());
 
   if (!lastGV.getInitializer().empty()) {
-      return getAppendedOpWithInitRegion(globs, state);
+    return getAppendedOpWithInitRegion(globs, state);
   } else {
-      auto [value, type] = getAppendedAttr(globs, state);
+    auto [value, type] = getAppendedAttr(globs, state);
 
-      auto valueAttrName = lastGV.getValueAttrName();
-      auto typeAttrName = lastGV.getGlobalTypeAttrName();
+    auto valueAttrName = lastGV.getValueAttrName();
+    auto typeAttrName = lastGV.getGlobalTypeAttrName();
 
-      auto cloned = state.clone(globs.back());
-      cloned->setAttr(valueAttrName, value);
-      cloned->setAttr(typeAttrName, TypeAttr::get(type));
-      return cloned;
+    auto cloned = state.clone(globs.back());
+    cloned->setAttr(valueAttrName, value);
+    cloned->setAttr(typeAttrName, TypeAttr::get(type));
+    return cloned;
   }
   llvm_unreachable("unknown value attribute type");
 }
 
-static Operation *appendComdatOps(ArrayRef<Operation *> globs, LLVM::ComdatOp comdat, LinkState &state) {
+static Operation *appendComdatOps(ArrayRef<Operation *> globs,
+                                  LLVM::ComdatOp comdat, LinkState &state) {
   auto result = cast<LLVM::ComdatOp>(state.clone(comdat));
   llvm::StringMap<Operation *> selectors;
 
   for (auto selector : result.getOps<LLVM::ComdatSelectorOp>()) {
-      selectors[selector.getSymName()] = selector;
+    selectors[selector.getSymName()] = selector;
   }
 
   for (auto *glob : globs) {
     comdat = dyn_cast<LLVM::ComdatOp>(glob);
-      for (auto &op : comdat.getBody().getOps()) {
-        auto selector = cast<LLVM::ComdatSelectorOp>(op);
-        auto selectorName = selector.getSymName();
-        if (selectors.contains(selectorName)) {
-            continue;
-        }
-        auto *cloned = state.clone(selector);
-        cloned->moveBefore(&result.getBody().front().back());
-        selectors[selectorName] = cloned;
+    for (auto &op : comdat.getBody().getOps()) {
+      auto selector = cast<LLVM::ComdatSelectorOp>(op);
+      auto selectorName = selector.getSymName();
+      if (selectors.contains(selectorName)) {
+        continue;
       }
+      auto *cloned = state.clone(selector);
+      cloned->moveBefore(&result.getBody().front().back());
+      selectors[selectorName] = cloned;
+    }
   }
   return result;
 }
@@ -500,6 +505,8 @@ Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
     return appendGlobalStructors<LLVM::GlobalDtorsOp>(state);
 
   const auto &globs = append.lookup(glob);
+  if (globs.empty())
+    return nullptr;
   if (auto lastGV = dyn_cast<LLVM::GlobalOp>(globs.back()))
     return appendGlobalOps(globs, lastGV, state);
   if (auto comdat = dyn_cast<LLVM::ComdatOp>(globs.back()))
