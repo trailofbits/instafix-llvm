@@ -3,9 +3,6 @@
 // CHECK: llvm.mlir.global_ctors ctors = [], priorities = [], data = []
 // CHECK llvm.mlir.global external @foo() comdat
 
-// comdat not yet supported
-// XFAIL: *
-
 module {
   llvm.comdat @__llvm_global_comdat {
     llvm.comdat_selector @foo any

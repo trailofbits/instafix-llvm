@@ -66,12 +66,12 @@ static LogicalResult verifySymbolAttrUse(FlatSymbolRefAttr symbol,
                                          SymbolTableCollection &symbolTable) {
   StringRef name = symbol.getValue();
   auto *symOp = symbolTable.lookupNearestSymbolFrom(op, symbol.getAttr());
-  if (auto func = dyn_cast<LLVMFuncOp>(symOp)) {
+  if (auto func = dyn_cast_if_present<LLVMFuncOp>(symOp)) {
     if (func.isExternal())
       return op->emitOpError("'") << name << "' does not have a definition";
     return success();
   }
-  if (auto alias = dyn_cast<AliasOp>(symOp))
+  if (auto alias = dyn_cast_if_present<AliasOp>(symOp))
     return success();
   return op->emitOpError("'")
          << name << "' does not reference a valid LLVM function";
