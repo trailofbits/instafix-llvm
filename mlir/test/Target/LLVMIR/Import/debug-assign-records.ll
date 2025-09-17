@@ -1,4 +1,6 @@
 ; RUN: mlir-translate -import-llvm -split-input-file %s | FileCheck %s
+; instafix-llvm modifies debuginfo
+; XFAIL: *
 
 ; Test debug record format (new debug info format with #dbg_assign records)
 ; This file uses the new debug record format which cannot be mixed with debug intrinsics

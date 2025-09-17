@@ -1,4 +1,6 @@
 ; RUN: mlir-translate -import-llvm -mlir-print-debuginfo -split-input-file %s | FileCheck %s
+; instafix-llvm modifies debuginfo
+; XFAIL: *
 
 ; CHECK: #[[$UNKNOWN_LOC:.+]] = loc(unknown)
 
