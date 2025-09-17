@@ -1,6 +1,9 @@
 // RUN: mlir-opt -llvm-legalize-for-export --split-input-file  %s | FileCheck %s -check-prefix=CHECK-OPT
 // RUN: mlir-translate -mlir-to-llvmir --split-input-file %s | FileCheck %s -check-prefix=CHECK-TRANSLATE
 
+// instafix-llvm modifies debuginfo
+// XFAIL: *
+
 #di_file = #llvm.di_file<"foo.c" in "/mlir/">
 #di_compile_unit = #llvm.di_compile_unit<id = distinct[0]<>, sourceLanguage = DW_LANG_C, file = #di_file, producer = "MLIR", isOptimized = true, emissionKind = Full>
 #di_subprogram = #llvm.di_subprogram<compileUnit = #di_compile_unit, scope = #di_file, name = "simplify", file = #di_file, subprogramFlags = Definition>

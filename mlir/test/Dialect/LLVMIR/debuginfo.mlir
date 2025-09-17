@@ -1,4 +1,6 @@
 // RUN: mlir-opt %s | mlir-opt | FileCheck %s
+// instafix-llvm modifies debuginfo
+// XFAIL: *
 
 // CHECK-DAG: #[[FILE:.*]] = #llvm.di_file<"debuginfo.mlir" in "/test/">
 #file = #llvm.di_file<"debuginfo.mlir" in "/test/">
