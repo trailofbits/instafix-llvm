@@ -33,23 +33,25 @@ public:
 
   template <typename structor_t>
   Operation *appendGlobalStructors(link::LinkState &state) {
-    ArrayRef<Operation *> toLink{};
+    SmallVector<Operation *> toLink;
 
     if constexpr (std::is_same<LLVM::GlobalCtorsOp, structor_t>()) {
-      if (auto found = append.find("llvm.global_ctors"); found != append.end())
-        toLink = append.find("llvm.global_ctors")->second;
-      else {
+      if (auto found = append.find("llvm.global_ctors"); found != append.end()) {
+        const auto &ops = append.find("llvm.global_ctors")->second;
+        toLink.append(ops.begin(), ops.end());
+      } else {
         // Single-module case: look for the single GlobalCtorsOp in summary
         if (auto found = summary.find("llvm.global_ctors"); found != summary.end())
-          toLink = ArrayRef<Operation *>{found->second};
+          toLink.push_back(found->second);
       }
     } else if constexpr (std::is_same<LLVM::GlobalDtorsOp, structor_t>()) {
-      if (auto found = append.find("llvm.global_dtors"); found != append.end())
-        toLink = append.find("llvm.global_dtors")->second;
-      else {
+      if (auto found = append.find("llvm.global_dtors"); found != append.end()) {
+        const auto &ops = append.find("llvm.global_dtors")->second;
+        toLink.append(ops.begin(), ops.end());
+      } else {
         // Single-module case: look for the single GlobalDtorsOp in summary
         if (auto found = summary.find("llvm.global_dtors"); found != summary.end())
-          toLink = ArrayRef<Operation *>{found->second};
+          toLink.push_back(found->second);
       }
     }
 
