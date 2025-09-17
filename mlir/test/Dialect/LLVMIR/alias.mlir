@@ -33,7 +33,7 @@ llvm.func internal @invoker() -> !llvm.ptr attributes { dso_local, personality =
   llvm.return %1 : !llvm.ptr
 }
 
-// CHECK: llvm.mlir.alias external @foo_alias : !llvm.ptr {
+// CHECK: llvm.mlir.alias external @foo_alias : !llvm.func<ptr ()> {
 // CHECK:   %[[ADDR:.*]] = llvm.mlir.addressof @callee : !llvm.ptr
 // CHECK:   llvm.return %[[ADDR]] : !llvm.ptr
 // CHECK: }
