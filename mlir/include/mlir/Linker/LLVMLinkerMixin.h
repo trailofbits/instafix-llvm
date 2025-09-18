@@ -279,13 +279,25 @@ public:
     const bool srcIsDeclaration = isDeclarationForLinker(pair.src);
     const bool dstIsDeclaration = isDeclarationForLinker(pair.dst);
 
-    std::optional<uint64_t> srcAlignment = derived.getAlignment(pair.src);
-    std::optional<uint64_t> dstAlignment = derived.getAlignment(pair.dst);
-    std::optional<uint64_t> alignment = std::nullopt;
-    if (srcAlignment || dstAlignment)
-      alignment = std::max(srcAlignment.value_or(1), dstAlignment.value_or(1));
-    derived.setAlignment(pair.src, alignment);
-    derived.setAlignment(pair.dst, alignment);
+    if (!isLocalLinkage(srcLinkage) && !isAppendingLinkage(srcLinkage)) {
+      if (derived.isGlobalVar(pair.src) && derived.isGlobalVar(pair.dst)) {
+        if (srcIsDeclaration && dstIsDeclaration &&
+            (!derived.isConstant(pair.src) || !derived.isConstant(pair.dst))) {
+          derived.setIsConstant(pair.src, false);
+          derived.setIsConstant(pair.dst, false);
+        }
+        if (isCommonLinkage(srcLinkage) && isCommonLinkage(dstLinkage)) {
+          std::optional<uint64_t> srcAlignment = derived.getAlignment(pair.src);
+          std::optional<uint64_t> dstAlignment = derived.getAlignment(pair.dst);
+          std::optional<uint64_t> alignment = std::nullopt;
+          if (srcAlignment || dstAlignment)
+            alignment =
+                std::max(srcAlignment.value_or(1), dstAlignment.value_or(1));
+          derived.setAlignment(pair.src, alignment);
+          derived.setAlignment(pair.dst, alignment);
+        }
+      }
+    }
 
     if (isAppendingLinkage(dstLinkage)) {
       return ConflictResolution::LinkFromSrc;
