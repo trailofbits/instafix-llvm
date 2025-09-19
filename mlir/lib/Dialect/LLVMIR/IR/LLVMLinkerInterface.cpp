@@ -201,7 +201,7 @@ void LLVM::LLVMSymbolLinkerInterface::setIsConstant(Operation *op, bool value) {
     gv.setConstant(value);
     return;
   }
-  llvm_unreachable("unexpected operation");
+  llvm_unreachable("constness setting allowed only for globals");
 }
 
 bool LLVM::LLVMSymbolLinkerInterface::isGlobalVar(Operation *op) {

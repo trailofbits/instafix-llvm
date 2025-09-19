@@ -180,7 +180,7 @@ public:
   static void setIsConstant(Operation *op, bool value) {
     if (auto gv = dyn_cast<cir::GlobalOp>(op))
       return gv.setConstant(value);
-    llvm_unreachable("unexpected operation");
+    llvm_unreachable("constness setting allowed only for globals");
   }
 
   static bool isGlobalVar(Operation *op) { return isa<cir::GlobalOp>(op); }
