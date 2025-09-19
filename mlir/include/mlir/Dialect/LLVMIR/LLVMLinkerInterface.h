@@ -24,6 +24,8 @@ public:
   static std::optional<uint64_t> getAlignment(Operation *op);
   static void setAlignment(Operation *op, std::optional<uint64_t>);
   static bool isConstant(Operation *op);
+  static void setIsConstant(Operation *op, bool value);
+  static bool isGlobalVar(Operation *op);
   static llvm::StringRef getSection(Operation *op);
   static uint32_t getAddressSpace(Operation *op);
   StringRef getSymbol(Operation *op) const override;

@@ -177,6 +177,14 @@ public:
     llvm_unreachable("unexpected operation");
   }
 
+  static void setIsConstant(Operation *op, bool value) {
+    if (auto gv = dyn_cast<cir::GlobalOp>(op))
+      return gv.setConstant(value);
+    llvm_unreachable("constness setting allowed only for globals");
+  }
+
+  static bool isGlobalVar(Operation *op) { return isa<cir::GlobalOp>(op); }
+
   static llvm::StringRef getSection(Operation *op) {
     if (auto gv = dyn_cast<cir::GlobalOp>(op)) {
       auto section = gv.getSection();

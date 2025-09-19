@@ -196,6 +196,18 @@ bool LLVM::LLVMSymbolLinkerInterface::isConstant(Operation *op) {
   llvm_unreachable("unexpected operation");
 }
 
+void LLVM::LLVMSymbolLinkerInterface::setIsConstant(Operation *op, bool value) {
+  if (auto gv = dyn_cast<LLVM::GlobalOp>(op)) {
+    gv.setConstant(value);
+    return;
+  }
+  llvm_unreachable("constness setting allowed only for globals");
+}
+
+bool LLVM::LLVMSymbolLinkerInterface::isGlobalVar(Operation *op) {
+  return isa<LLVM::GlobalOp>(op);
+}
+
 llvm::StringRef LLVM::LLVMSymbolLinkerInterface::getSection(Operation *op) {
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op)) {
     auto section = gv.getSection();
