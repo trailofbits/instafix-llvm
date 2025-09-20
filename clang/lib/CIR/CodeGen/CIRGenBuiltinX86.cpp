@@ -174,62 +174,58 @@ CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builtinName) {
     {"movntdqa", "llvm.x86.sse41.movntdqa"},
     {"movntdq", "llvm.x86.sse2.movnt.dq"},
 
-    // Arithmetic operations
-    {"addps", "llvm.x86.sse.add.ps"},
-    {"subps", "llvm.x86.sse.sub.ps"},
-    {"mulps", "llvm.x86.sse.mul.ps"},
-    {"divps", "llvm.x86.sse.div.ps"},
+      // Arithmetic operations
+      {"addps", "llvm.x86.sse.add.ps"},
+      {"subps", "llvm.x86.sse.sub.ps"},
+      {"mulps", "llvm.x86.sse.mul.ps"},
+      {"divps", "llvm.x86.sse.div.ps"},
 
-    // Cast operations (these might not need intrinsics)
-    {"castps_si128", "llvm.x86.sse.cast.ps.si128"},
-    {"castsi128_ps", "llvm.x86.sse.cast.si128.ps"},
+      // Cast operations (these might not need intrinsics)
+      {"castps_si128", "llvm.x86.sse.cast.ps.si128"},
+      {"castsi128_ps", "llvm.x86.sse.cast.si128.ps"},
 
-    // Set/Zero operations
-    {"setzero_ps", "llvm.x86.sse.setzero.ps"},
-    {"setzero_si128", "llvm.x86.sse2.setzero.si128"},
+      // Set/Zero operations
+      {"setzero_ps", "llvm.x86.sse.setzero.ps"},
+      {"setzero_si128", "llvm.x86.sse2.setzero.si128"},
 
-    // Unpack operations
-    {"unpacklo_epi8", "llvm.x86.sse2.punpcklbw.128"},
-    {"unpackhi_epi8", "llvm.x86.sse2.punpckhbw.128"},
-    {"unpacklo_epi16", "llvm.x86.sse2.punpcklwd.128"},
-    {"unpackhi_epi16", "llvm.x86.sse2.punpckhwd.128"},
+      // Unpack operations
+      {"unpacklo_epi8", "llvm.x86.sse2.punpcklbw.128"},
+      {"unpackhi_epi8", "llvm.x86.sse2.punpckhbw.128"},
+      {"unpacklo_epi16", "llvm.x86.sse2.punpcklwd.128"},
+      {"unpackhi_epi16", "llvm.x86.sse2.punpckhwd.128"},
 
-    // K-mask shift operations (AVX-512)
-    {"kshiftliqi", "llvm.x86.avx512.kshiftl.b"},
-    {"kshiftlihi", "llvm.x86.avx512.kshiftl.w"},
-    {"kshiftlisi", "llvm.x86.avx512.kshiftl.d"},
-    {"kshiftlidi", "llvm.x86.avx512.kshiftl.q"},
-    {"kshiftriqi", "llvm.x86.avx512.kshiftr.b"},
-    {"kshiftrihi", "llvm.x86.avx512.kshiftr.w"},
-    {"kshiftrisi", "llvm.x86.avx512.kshiftr.d"},
-    {"kshiftridi", "llvm.x86.avx512.kshiftr.q"},
+      // K-mask shift operations (AVX-512)
+      {"kshiftliqi", "llvm.x86.avx512.kshiftl.b"},
+      {"kshiftlihi", "llvm.x86.avx512.kshiftl.w"},
+      {"kshiftlisi", "llvm.x86.avx512.kshiftl.d"},
+      {"kshiftlidi", "llvm.x86.avx512.kshiftl.q"},
+      {"kshiftriqi", "llvm.x86.avx512.kshiftr.b"},
+      {"kshiftrihi", "llvm.x86.avx512.kshiftr.w"},
+      {"kshiftrisi", "llvm.x86.avx512.kshiftr.d"},
+      {"kshiftridi", "llvm.x86.avx512.kshiftr.q"},
 
-    // Pack operations
-    {"packsswb128", "llvm.x86.sse2.packsswb.128"},
-    {"packssdw128", "llvm.x86.sse2.packssdw.128"},
-    {"packuswb128", "llvm.x86.sse2.packuswb.128"},
+      // Pack operations
+      {"packsswb128", "llvm.x86.sse2.packsswb.128"},
+      {"packssdw128", "llvm.x86.sse2.packssdw.128"},
+      {"packuswb128", "llvm.x86.sse2.packuswb.128"},
 
-    // Conversion operations
-    {"cvtps2dq", "llvm.x86.sse2.cvtps2dq"},
-    {"cvtdq2ps", "llvm.x86.sse2.cvtdq2ps"},
-    {"cvtpd2dq", "llvm.x86.sse2.cvtpd2dq"},
+      // Conversion operations
+      {"cvtps2dq", "llvm.x86.sse2.cvtps2dq"},
+      {"cvtdq2ps", "llvm.x86.sse2.cvtdq2ps"},
+      {"cvtpd2dq", "llvm.x86.sse2.cvtpd2dq"},
 
-    // Shuffle operations
-    {"shufps", "llvm.x86.sse.shuf.ps"},
-    {"pshuflw", "llvm.x86.sse2.pshufl.w"},
-    {"pshufhw", "llvm.x86.sse2.pshufh.w"},
-    {"palignr128", "llvm.x86.ssse3.palign.r.128"},
-    {"palignr256", "llvm.x86.avx2.palign.r"},
-    {"permdi256", "llvm.x86.avx2.permd"},
+      // Comparison operations
+      {"pcmpeqd128", "llvm.x86.sse2.pcmpeq.d"},
+      {"pcmpgtb128", "llvm.x86.sse2.pcmpgt.b"},
 
-    // AES operations
-    {"aesdec128", "llvm.x86.aesni.aesdec"},
-    {"aesenc128", "llvm.x86.aesni.aesenc"},
+      // Shuffle operations
+      {"shufps", "llvm.x86.sse.shuf.ps"},
+      {"pshuflw", "llvm.x86.sse2.pshufl.w"},
+      {"pshufhw", "llvm.x86.sse2.pshufh.w"},
 
-    // Shift operations
-    {"pslldqi128_byteshift", "llvm.x86.sse2.psll.dq"},
-    {"pslldqi256_byteshift", "llvm.x86.avx2.psll.dq"},
-    {"pslldqi512_byteshift", "llvm.x86.avx512.psll.dq.512"},
+      // AES operations
+      {"aesdec128", "llvm.x86.aesni.aesdec"},
+      {"aesenc128", "llvm.x86.aesni.aesenc"},
 
     // Advanced math operations (using correct LLVM intrinsic names)
     {"sqrtps512", "llvm.x86.avx512.sqrt.ps.512"},
@@ -253,40 +249,63 @@ CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builtinName) {
     {"cmpunordpd", "llvm.x86.sse2.cmp.pd"},
     {"cmpltss", "llvm.x86.sse.cmp.ss"},
 
-    // Bit manipulation
-    {"pand128", "llvm.x86.sse2.pand"},
-    {"por128", "llvm.x86.sse2.por"},
-    {"pxor128", "llvm.x86.sse2.pxor"},
-    {"pandn128", "llvm.x86.sse2.pandn"},
+      // Shuffle operations
+      {"pshuflw", "llvm.x86.sse2.pshufl.w"},
+      {"pshufhw", "llvm.x86.sse2.pshufh.w"},
+      {"palignr128", "llvm.x86.ssse3.palign.r.128"},
+      {"palignr256", "llvm.x86.avx2.palign.r"},
+      {"permdi256", "llvm.x86.avx2.permd"},
 
-    // Mask operations (AVX-512)
-    {"kandqi", "llvm.x86.avx512.kand.b"},
-    {"korqi", "llvm.x86.avx512.kor.b"},
-    {"kxorqi", "llvm.x86.avx512.kxor.b"},
-    {"knotqi", "llvm.x86.avx512.knot.b"},
+      // Comparison operations
+      {"pcmpeqb128", "llvm.x86.sse2.pcmpeq.b"},
+      {"pcmpeqw128", "llvm.x86.sse2.pcmpeq.w"},
+      {"pcmpeqd128", "llvm.x86.sse2.pcmpeq.d"},
+      {"cmpeqps", "llvm.x86.sse.cmp.ps"},
+      {"cmpltps", "llvm.x86.sse.cmp.ps"},
+      {"cmpleps", "llvm.x86.sse.cmp.ps"},
+      {"cmpunordps", "llvm.x86.sse.cmp.ps"},
+      {"cmpunordpd", "llvm.x86.sse2.cmp.pd"},
+      {"cmpltss", "llvm.x86.sse.cmp.ss"},
+      // Bit manipulation
+      {"pand128", "llvm.x86.sse2.pand"},
+      {"por128", "llvm.x86.sse2.por"},
+      {"pxor128", "llvm.x86.sse2.pxor"},
+      {"pandn128", "llvm.x86.sse2.pandn"},
 
-    // Conversion operations
-    {"cvtdq2ps256", "llvm.x86.avx.cvtdq2.ps.256"},
-    {"cvtpd2ps", "llvm.x86.sse2.cvtpd2ps"},
-    {"cvtps2dq256", "llvm.x86.avx.cvtps2dq.256"},
+      // Load/Store operations
+      {"loaddqu", "llvm.x86.sse2.loadu.dq"},
+      {"storedqu", "llvm.x86.sse2.storeu.dq"},
+      {"movntdqa", "llvm.x86.sse41.movntdqa"},
+      {"movntdq", "llvm.x86.sse2.movnt.dq"},
 
-    // Specialized operations
-    {"pternlogd128", "llvm.x86.avx512.pternlog.d.128"},
-    {"vpopcntd_128", "llvm.x86.avx512.vpopcnt.d.128"},
-    {"vplzcntd_128", "llvm.x86.avx512.vplzcnt.d.128"},
+      // Mask operations (AVX-512)
+      {"kandqi", "llvm.x86.avx512.kand.b"},
+      {"korqi", "llvm.x86.avx512.kor.b"},
+      {"kxorqi", "llvm.x86.avx512.kxor.b"},
+      {"knotqi", "llvm.x86.avx512.knot.b"},
 
-    // Gather/Scatter operations
-    {"gathersiv4sf", "llvm.x86.avx2.gather.d.ps"},
-    {"scattersiv4sf", "llvm.x86.avx512.scatter.dps.512"},
+      // Conversion operations
+      {"cvtdq2ps256", "llvm.x86.avx.cvtdq2.ps.256"},
+      {"cvtpd2ps", "llvm.x86.sse2.cvtpd2ps"},
+      {"cvtps2dq256", "llvm.x86.avx.cvtps2dq.256"},
 
-    // Vector size operations
-    {"extract128i256", "llvm.x86.avx2.vextracti128"},
-    {"insert128i256", "llvm.x86.avx2.vinserti128"},
-    {"pbroadcastd256", "llvm.x86.avx2.pbroadcastd.256"},
+      // Specialized operations
+      {"pternlogd128", "llvm.x86.avx512.pternlog.d.128"},
+      {"vpopcntd_128", "llvm.x86.avx512.vpopcnt.d.128"},
+      {"vplzcntd_128", "llvm.x86.avx512.vplzcnt.d.128"},
 
-    // String processing
-    {"pcmpistri128", "llvm.x86.sse42.pcmpistri128"},
-    {"pcmpistrm128", "llvm.x86.sse42.pcmpistrm128"},
+      // Gather/Scatter operations
+      {"gathersiv4sf", "llvm.x86.avx2.gather.d.ps"},
+      {"scattersiv4sf", "llvm.x86.avx512.scatter.dps.512"},
+
+      // Vector size operations
+      {"extract128i256", "llvm.x86.avx2.vextracti128"},
+      {"insert128i256", "llvm.x86.avx2.vinserti128"},
+      {"pbroadcastd256", "llvm.x86.avx2.pbroadcastd.256"},
+
+      // String processing
+      {"pcmpistri128", "llvm.x86.sse42.pcmpistri128"},
+      {"pcmpistrm128", "llvm.x86.sse42.pcmpistrm128"},
   };
 
   // Check if we have a direct mapping
