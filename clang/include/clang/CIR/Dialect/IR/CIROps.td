@@ -3971,7 +3971,10 @@ def FuncOp : CIR_Op<"func", [
 
   let arguments = (ins
     SymbolNameAttr:$sym_name,
-    CIR_VisibilityAttr:$global_visibility,
+    DefaultValuedAttr<
+      CIR_VisibilityAttr,
+      "VisibilityKind::Default"
+    >:$global_visibility,
     TypeAttrOf<CIR_FuncType>:$function_type,
     UnitAttr:$builtin,
     UnitAttr:$coroutine,

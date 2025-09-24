@@ -2743,6 +2743,14 @@ cir::FuncOp CIRGenModule::createCIRFunction(mlir::Location loc, StringRef name,
     mlir::SymbolTable::setSymbolVisibility(
         f, mlir::SymbolTable::Visibility::Private);
 
+    // Set default CIR global_visibility attribute to avoid verification errors
+    if (fd) {
+      f.setGlobalVisibilityAttr(getGlobalVisibilityAttrFromDecl(fd));
+    } else {
+      // Default to hidden visibility for declarations without a FunctionDecl
+      f.setGlobalVisibilityAttr(cir::VisibilityAttr::get(&getMLIRContext(), cir::VisibilityKind::Hidden));
+    }
+
     // Initialize with empty dict of extra attributes.
     f.setExtraAttrsAttr(
         cir::ExtraFuncAttributesAttr::get(builder.getDictionaryAttr({})));

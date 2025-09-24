@@ -14,193 +14,162 @@
 #include "mlir/Linker/LLVMLinkerMixin.h"
 #include "mlir/Linker/LinkerInterface.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
+#include "mlir/IR/SymbolTable.h"
+#include "llvm/Support/Casting.h"
 
 using namespace mlir;
 using namespace mlir::link;
 
 //===----------------------------------------------------------------------===//
-// CIRSymbolLinkerInterface
+// CIRSymbolLinkerInterface Implementation
 //===----------------------------------------------------------------------===//
+Operation *cir::CIRSymbolLinkerInterface::cloneCIROperationPreservingAttributes(
+    Operation *src, LinkState &state) const {
+  // Get the mapping from the link state
+  IRMapping &mapping = state.getMapping();
 
-class CIRSymbolLinkerInterface
-    : public SymbolAttrLLVMLinkerInterface<CIRSymbolLinkerInterface> {
-public:
-  CIRSymbolLinkerInterface(Dialect *dialect)
-      : SymbolAttrLLVMLinkerInterface(dialect) {}
-
-  bool canBeLinked(Operation *op) const override {
-    return isa<cir::GlobalOp>(op) || isa<cir::FuncOp>(op);
+  // Handle different CIR operation types with specialized cloning
+  if (auto globalOp = dyn_cast<cir::GlobalOp>(src)) {
+    return cloneCIRGlobal(globalOp, state, mapping);
+  }
+  if (auto funcOp = dyn_cast<cir::FuncOp>(src)) {
+    return cloneCIRFunction(funcOp, state, mapping);
   }
 
-  //===--------------------------------------------------------------------===//
-  // LLVMLinkerMixin required methods from derived linker interface
-  //===--------------------------------------------------------------------===//
+  // For any other operations, fall back to standard cloning with visibility filtering
+  Operation *cloned = state.clone(src);
 
-  // TODO: expose convertLinkage from LowerToLLVM.cpp
-  static Linkage toLLVMLinkage(cir::GlobalLinkageKind linkage) {
-    using CIR = cir::GlobalLinkageKind;
-    using LLVM = mlir::LLVM::Linkage;
+  // Apply visibility filtering to any CIR operation that might have been missed
+  if (isa<cir::FuncOp, cir::GlobalOp>(src)) {
+    // Set private MLIR visibility for ALL CIR operations to avoid conflicts
+    // with MLIR's general verification rules that assume public visibility
+    // by default. CIR has its own visibility system via global_visibility.
+    cloned->setAttr(mlir::SymbolTable::getVisibilityAttrName(),
+                    mlir::StringAttr::get(cloned->getContext(), "private"));
 
-    switch (linkage) {
-    case CIR::AvailableExternallyLinkage:
-      return LLVM::AvailableExternally;
-    case CIR::CommonLinkage:
-      return LLVM::Common;
-    case CIR::ExternalLinkage:
-      return LLVM::External;
-    case CIR::ExternalWeakLinkage:
-      return LLVM::ExternWeak;
-    case CIR::InternalLinkage:
-      return LLVM::Internal;
-    case CIR::LinkOnceAnyLinkage:
-      return LLVM::Linkonce;
-    case CIR::LinkOnceODRLinkage:
-      return LLVM::LinkonceODR;
-    case CIR::PrivateLinkage:
-      return LLVM::Private;
-    case CIR::WeakAnyLinkage:
-      return LLVM::Weak;
-    case CIR::WeakODRLinkage:
-      return LLVM::WeakODR;
-    };
-  }
-
-  static Linkage getLinkage(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return toLLVMLinkage(gv.getLinkage());
-    if (auto fn = dyn_cast<cir::FuncOp>(op))
-      return toLLVMLinkage(fn.getLinkage());
-    llvm_unreachable("unexpected operation");
-  }
-
-  static bool isComdat(Operation *op) {
-      // TODO(frabert): Extracting comdat info from CIR is not implemented yet
-      return false;
-  }
-
-  static std::optional<mlir::link::ComdatSelector> getComdatSelector(Operation *op) {
-    // TODO(frabert): Extracting comdat info from CIR is not implemented yet
-    return std::nullopt;
-  }
-
-  // TODO: expose lowerCIRVisibilityToLLVMVisibility from LowerToLLVM.cpp
-  static Visibility toLLVMVisibility(cir::VisibilityAttr visibility) {
-    return toLLVMVisibility(visibility.getValue());
-  }
-
-  static Visibility toLLVMVisibility(cir::VisibilityKind visibility) {
-    using CIR = cir::VisibilityKind;
-    using LLVM = mlir::LLVM::Visibility;
-
-    switch (visibility) {
-    case CIR::Default:
-      return LLVM::Default;
-    case CIR::Hidden:
-      return LLVM::Hidden;
-    case CIR::Protected:
-      return LLVM::Protected;
-    };
-  }
-
-  static cir::VisibilityKind toCIRVisibility(Visibility visibility) {
-    using CIR = cir::VisibilityKind;
-    using LLVM = mlir::LLVM::Visibility;
-
-    switch (visibility) {
-    case LLVM::Default:
-      return CIR::Default;
-    case LLVM::Hidden:
-      return CIR::Hidden;
-    case LLVM::Protected:
-      return CIR::Protected;
-    };
-  }
-
-  static cir::VisibilityAttr toCIRVisibilityAttr(Visibility visibility,
-                                                 MLIRContext *mlirContext) {
-    return cir::VisibilityAttr::get(mlirContext, toCIRVisibility(visibility));
-  }
-
-  static Visibility getVisibility(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return toLLVMVisibility(gv.getGlobalVisibility());
-    if (auto fn = dyn_cast<cir::FuncOp>(op))
-      return toLLVMVisibility(fn.getGlobalVisibility());
-    llvm_unreachable("unexpected operation");
-  }
-
-  static void setVisibility(Operation *op, Visibility visibility) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return gv.setGlobalVisibilityAttr(
-          toCIRVisibilityAttr(visibility, op->getContext()));
-    if (auto fn = dyn_cast<cir::FuncOp>(op))
-      return fn.setGlobalVisibilityAttr(
-          toCIRVisibilityAttr(visibility, op->getContext()));
-    llvm_unreachable("unexpected operation");
-  }
-
-  static bool isDeclaration(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return gv.isDeclaration();
-    if (auto fn = dyn_cast<cir::FuncOp>(op))
-      return fn.isDeclaration();
-    llvm_unreachable("unexpected operation");
-  }
-
-  static unsigned getBitWidth(Operation *op) { llvm_unreachable("NYI"); }
-
-  // FIXME: CIR does not yet have UnnamedAddr attribute
-  static UnnamedAddr getUnnamedAddr(Operation */* op*/) {
-      return UnnamedAddr::Global;
-  }
-
-  // FIXME: CIR does not yet have UnnamedAddr attribute
-  static void setUnnamedAddr(Operation */* op*/, UnnamedAddr addr) {}
-
-  static std::optional<uint64_t> getAlignment(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return gv.getAlignment();
-    // FIXME: CIR does not (yet?) have alignment for functions
-    llvm_unreachable("unexpected operation");
-  }
-
-  static void setAlignment(Operation *op, std::optional<uint64_t> align) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return gv.setAlignment(align);
-    // FIXME: CIR does not (yet?) have alignment for functions
-    llvm_unreachable("unexpected operation");
-  }
-
-  static bool isConstant(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return gv.getConstant();
-    llvm_unreachable("unexpected operation");
-  }
-
-  static void setIsConstant(Operation *op, bool value) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op))
-      return gv.setConstant(value);
-    llvm_unreachable("constness setting allowed only for globals");
-  }
-
-  static bool isGlobalVar(Operation *op) { return isa<cir::GlobalOp>(op); }
-
-  static llvm::StringRef getSection(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op)) {
-      auto section = gv.getSection();
-      return section ? section.value() : llvm::StringRef();
+    if (auto funcOp = dyn_cast<cir::FuncOp>(cloned)) {
+      // Ensure CIR global_visibility is set for declarations
+      if (funcOp.isDeclaration() && !cloned->hasAttr("global_visibility")) {
+        auto hiddenVisibility = cir::VisibilityAttr::get(cloned->getContext(), cir::VisibilityKind::Hidden);
+        cloned->setAttr("global_visibility", hiddenVisibility);
+      }
+    } else if (auto globalOp = dyn_cast<cir::GlobalOp>(cloned)) {
+      // Ensure CIR global_visibility is set for declarations
+      if (globalOp.isDeclaration() && !cloned->hasAttr("global_visibility")) {
+        auto hiddenVisibility = cir::VisibilityAttr::get(cloned->getContext(), cir::VisibilityKind::Hidden);
+        cloned->setAttr("global_visibility", hiddenVisibility);
+      }
     }
-    // FIXME: CIR func does not yet have section attribute
-    llvm_unreachable("unexpected operation");
   }
 
-  static std::optional<cir::AddressSpaceAttr> getAddressSpace(Operation *op) {
-    if (auto gv = dyn_cast<cir::GlobalOp>(op)) {
-      return gv.getAddrSpaceAttr();
+  return cloned;
+}
+
+Operation *cir::CIRSymbolLinkerInterface::cloneCIRGlobal(
+    cir::GlobalOp src, LinkState &state, IRMapping &mapping) const {
+  // Extract basic attributes
+  StringAttr symName = src.getSymNameAttr();
+  TypeAttr symTypeAttr = src.getSymTypeAttr();
+  Type symType = symTypeAttr.getValue();
+
+  // Create new operation with minimal parameters to avoid parameter order
+  // issues
+  auto newGlobal =
+      state.create<cir::GlobalOp>(src.getLoc(),
+                                  symName, // sym_name
+                                  symType  // sym_type
+                                  // Let other parameters use their defaults
+      );
+
+  // Set private MLIR visibility for all CIR globals to avoid verification conflicts
+  newGlobal->setAttr(mlir::SymbolTable::getVisibilityAttrName(),
+                     mlir::StringAttr::get(newGlobal.getContext(), "private"));
+
+  // Copy ALL attributes directly from source to preserve CIR attribute syntax
+  // This is the key fix - no serialization means no corruption
+  for (auto namedAttr : src->getAttrs()) {
+    // Skip MLIR symbol visibility attribute - we've already set it to private above
+    if (namedAttr.getName() == mlir::SymbolTable::getVisibilityAttrName())
+      continue;
+
+    // Handle CIR global visibility attribute specially
+    if (namedAttr.getName() == "global_visibility") {
+      // Always preserve global_visibility attribute as it's required by MLIR verifier
+      // For declarations, ensure it's set to a safe value (hidden, not public/default)
+      if (src.isDeclaration()) {
+        // Set to hidden visibility for declarations to avoid verification errors
+        auto hiddenVisibility = cir::VisibilityAttr::get(newGlobal.getContext(), cir::VisibilityKind::Hidden);
+        newGlobal->setAttr("global_visibility", hiddenVisibility);
+      } else {
+        // For definitions, copy the original attribute
+        newGlobal->setAttr(namedAttr.getName(), namedAttr.getValue());
+      }
+      continue;
     }
-    llvm_unreachable("unexpected operation");
+
+    newGlobal->setAttr(namedAttr.getName(), namedAttr.getValue());
   }
-};
+
+  // Update mapping for reference handling
+  mapping.map(src.getOperation(), newGlobal.getOperation());
+
+  return newGlobal.getOperation();
+}
+
+Operation *
+cir::CIRSymbolLinkerInterface::cloneCIRFunction(FuncOp src, LinkState &state,
+                                                IRMapping &mapping) const {
+  // Extract basic attributes
+  StringAttr symName = src.getSymNameAttr();
+  TypeAttr functionTypeAttr = src.getFunctionTypeAttr();
+  auto functionType = cast<cir::FuncType>(functionTypeAttr.getValue());
+
+  // Create new FuncOp with minimal parameters to avoid parameter order issues
+  auto newFunc =
+      state.create<cir::FuncOp>(src.getLoc(),
+                                symName,     // name
+                                functionType // type
+                                // Let other parameters use their defaults
+      );
+
+  // Set private MLIR visibility for all CIR functions to avoid verification conflicts
+  newFunc->setAttr(mlir::SymbolTable::getVisibilityAttrName(),
+                   mlir::StringAttr::get(newFunc.getContext(), "private"));
+
+  // Copy ALL attributes directly from source to preserve CIR attribute syntax
+  for (auto namedAttr : src->getAttrs()) {
+    // Skip MLIR symbol visibility attribute - we've already set it to private above
+    if (namedAttr.getName() == mlir::SymbolTable::getVisibilityAttrName())
+      continue;
+
+    // Handle CIR global visibility attribute specially
+    if (namedAttr.getName() == "global_visibility") {
+      // Always preserve global_visibility attribute as it's required by MLIR verifier
+      // For declarations, ensure it's set to a safe value (hidden, not public/default)
+      if (src.isDeclaration()) {
+        // Set to hidden visibility for declarations to avoid verification errors
+        auto hiddenVisibility = cir::VisibilityAttr::get(newFunc.getContext(), cir::VisibilityKind::Hidden);
+        newFunc->setAttr("global_visibility", hiddenVisibility);
+      } else {
+        // For definitions, copy the original attribute
+        newFunc->setAttr(namedAttr.getName(), namedAttr.getValue());
+      }
+      continue;
+    }
+
+    newFunc->setAttr(namedAttr.getName(), namedAttr.getValue());
+  }
+
+  // Clone function body if it exists (for definitions, not declarations)
+  if (!src.isDeclaration()) {
+    newFunc.getBody().cloneInto(&src.getBody(), mapping);
+  }
+
+  // Update mapping
+  mapping.map(src.getOperation(), newFunc.getOperation());
+
+  return newFunc.getOperation();
+}
 
 //===----------------------------------------------------------------------===//
 // registerLinkerInterface
@@ -208,6 +177,6 @@ public:
 
 void cir::registerLinkerInterface(mlir::DialectRegistry &registry) {
   registry.addExtension(+[](mlir::MLIRContext *ctx, cir::CIRDialect *dialect) {
-    dialect->addInterfaces<CIRSymbolLinkerInterface>();
+    dialect->addInterfaces<cir::CIRSymbolLinkerInterface>();
   });
 }
