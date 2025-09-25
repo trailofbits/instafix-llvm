@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/LLVMIR/LLVMLinkerInterface.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Linker/LLVMLinkerMixin.h"
 #include "mlir/Linker/LinkerInterface.h"
@@ -305,12 +306,12 @@ LogicalResult LLVM::LLVMSymbolLinkerInterface::initialize(ModuleOp src) {
 
 LogicalResult LLVM::LLVMSymbolLinkerInterface::finalize(ModuleOp dst) const {
   SmallVector<NamedAttribute, 2> newAttrs;
+  // The names are currently hardcoded for dlti dialect
+  // Nice solution would be preferable
   if (dtla)
-    dst->setAttr(LLVMDialect::getDataLayoutAttrName(),
-                 dyn_cast<Attribute>(dtla));
+    dst->setAttr(DataLayoutSpecAttr::name, dyn_cast<Attribute>(dtla));
   if (targetSys)
-    dst->setAttr(LLVMDialect::getTargetTripleAttrName(),
-                 dyn_cast<Attribute>(targetSys));
+    dst->setAttr(TargetSystemSpecAttr::name, dyn_cast<Attribute>(targetSys));
   return success();
 }
 
