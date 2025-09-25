@@ -297,6 +297,23 @@ LLVM::LLVMSymbolLinkerInterface::dependencies(Operation *op) const {
   return result;
 }
 
+LogicalResult LLVM::LLVMSymbolLinkerInterface::initialize(ModuleOp src) {
+  dtla = src.getDataLayoutSpec();
+  targetSys = src.getTargetSystemSpec();
+  return success();
+}
+
+LogicalResult LLVM::LLVMSymbolLinkerInterface::finalize(ModuleOp dst) const {
+  SmallVector<NamedAttribute, 2> newAttrs;
+  if (dtla)
+    dst->setAttr(LLVMDialect::getDataLayoutAttrName(),
+                 dyn_cast<Attribute>(dtla));
+  if (targetSys)
+    dst->setAttr(LLVMDialect::getTargetTripleAttrName(),
+                 dyn_cast<Attribute>(targetSys));
+  return success();
+}
+
 static std::pair<Attribute, Type>
 getAppendedArrayAttr(llvm::ArrayRef<mlir::Operation *> globs,
                      LinkState &state) {

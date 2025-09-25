@@ -29,6 +29,8 @@ public:
   StringRef getSymbol(Operation *op) const override;
   Operation *materialize(Operation *src, link::LinkState &state) const override;
   SmallVector<Operation *> dependencies(Operation *op) const override;
+  LogicalResult initialize(ModuleOp src) override;
+  LogicalResult finalize(ModuleOp dst) const override;
   Operation *appendGlobals(llvm::StringRef glob, link::LinkState &state);
 
   template <typename structor_t>
@@ -116,6 +118,10 @@ public:
     structor.setDataAttr(newDataAttr);
     return cloned;
   }
+
+private:
+  DataLayoutSpecInterface dtla = {};
+  TargetSystemSpecInterface targetSys = {};
 };
 
 } // namespace LLVM

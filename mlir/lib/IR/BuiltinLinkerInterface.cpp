@@ -30,6 +30,10 @@ public:
     return symbolLinkers.initialize(src);
   }
 
+  LogicalResult finalize(ModuleOp dst) const override {
+    return symbolLinkers.finalize(dst);
+  }
+
   LogicalResult summarize(ModuleOp src, unsigned flags) override {
     WalkResult result = src.walk([&](Operation *op) {
       if (op == src)
