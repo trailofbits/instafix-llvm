@@ -73,6 +73,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1842,7 +1843,29 @@ cir::GlobalOp CIRGenModule::getGlobalForStringLiteral(const StringLiteral *s,
       assert(0 && "not implemented");
     } else {
       lt = cir::GlobalLinkageKind::PrivateLinkage;
-      globalVariableName = name;
+
+      // Generate library-specific string literal names to avoid cross-library
+      // conflicts This prevents the "cir.str.21" collision issue when multiple
+      // libraries independently generate string literals with the same counter
+      // values
+      std::string librarySpecificName = name.str();
+
+      // Extract library context from the current source file being compiled
+      if (const auto &SM = getASTContext().getSourceManager();
+          SM.getMainFileID().isValid()) {
+        if (const auto *FE = SM.getFileEntryForID(SM.getMainFileID())) {
+          llvm::StringRef fileName = FE->tryGetRealPathName();
+          // Extract just the base filename without path and extension
+          llvm::StringRef baseName = llvm::sys::path::stem(fileName);
+          if (!baseName.empty()) {
+            // Create library-specific prefix: "cir.str" -> "cir.basename.str"
+            librarySpecificName = "cir." + baseName.str() + "." +
+                                  name.str().substr(4); // Remove "cir." prefix
+          }
+        }
+      }
+
+      globalVariableName = librarySpecificName;
     }
 
     // Unlike LLVM IR, CIR doesn't automatically unique names for globals, so
@@ -2748,7 +2771,8 @@ cir::FuncOp CIRGenModule::createCIRFunction(mlir::Location loc, StringRef name,
       f.setGlobalVisibilityAttr(getGlobalVisibilityAttrFromDecl(fd));
     } else {
       // Default to hidden visibility for declarations without a FunctionDecl
-      f.setGlobalVisibilityAttr(cir::VisibilityAttr::get(&getMLIRContext(), cir::VisibilityKind::Hidden));
+      f.setGlobalVisibilityAttr(cir::VisibilityAttr::get(
+          &getMLIRContext(), cir::VisibilityKind::Hidden));
     }
 
     // Initialize with empty dict of extra attributes.

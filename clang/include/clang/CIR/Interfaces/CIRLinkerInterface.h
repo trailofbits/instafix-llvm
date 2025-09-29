@@ -13,6 +13,7 @@
 #ifndef CLANG_INTERFACES_CIR_CIRLINKINTERFACE_H_
 #define CLANG_INTERFACES_CIR_CIRLINKINTERFACE_H_
 #include "mlir/Linker/LLVMLinkerMixin.h"
+#include "mlir/Linker/LinkerInterface.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include <optional>
 
@@ -212,17 +213,55 @@ public:
     llvm_unreachable("unexpected operation");
   }
 
-  Operation *materialize(Operation *src, LinkState &state) const override {
-    return cloneCIROperationPreservingAttributes(src, state);
+  ConflictResolution getConflictResolution(Conflict pair) const override {
+    // Check if this is a cross-dialect conflict
+    if (isCrossDialectConflict(pair)) {
+      // always rename CIR symbols to avoid conflicts
+      if (pair.src->getDialect()->getNamespace() == "cir") {
+        return ConflictResolution::LinkFromBothAndRenameSrc;
+      } else {
+        return ConflictResolution::LinkFromBothAndRenameDst;
+      }
+    }
+
+    // Handle same-dialect CIR string literal conflicts
+    // This prevents the "external linkage failure" in LLVMLinkerMixin
+    if (isCIRStringLiteralConflict(pair)) {
+      // Treat CIR string literals as if they had internal linkage
+      // (allows automatic renaming like LLVM string literals)
+      return ConflictResolution::LinkFromBothAndRenameSrc;
+    }
+
+    return SymbolAttrLLVMLinkerInterface::getConflictResolution(pair);
   }
 
 private:
-  Operation *cloneCIROperationPreservingAttributes(Operation *src,
-                                                   LinkState &state) const;
-  Operation *cloneCIRGlobal(cir::GlobalOp src, LinkState &state,
-                            IRMapping &mapping) const;
-  Operation *cloneCIRFunction(cir::FuncOp src, LinkState &state,
-                              IRMapping &mapping) const;
+  bool isCrossDialectConflict(Conflict pair) const {
+    return pair.src->getDialect()->getNamespace() !=
+           pair.dst->getDialect()->getNamespace();
+  }
+
+  bool isCIRStringLiteralConflict(Conflict pair) const {
+    // Check if both operations are CIR globals
+    auto srcGlobal = dyn_cast<cir::GlobalOp>(pair.src);
+    auto dstGlobal = dyn_cast<cir::GlobalOp>(pair.dst);
+
+    if (!srcGlobal || !dstGlobal)
+      return false;
+
+    // Check if both are from CIR dialect
+    if (pair.src->getDialect()->getNamespace() != "cir" ||
+        pair.dst->getDialect()->getNamespace() != "cir") {
+      return false;
+    }
+
+    // Check if symbol names look like CIR string literals
+    StringRef srcName = getSymbol(pair.src);
+    StringRef dstName = getSymbol(pair.dst);
+
+    // Both should be CIR string literals (cir.str, cir.str.1, cir.str.21, etc.)
+    return srcName.starts_with("cir.str") && dstName.starts_with("cir.str");
+  }
 };
 
 void registerLinkerInterface(mlir::DialectRegistry &registry);
