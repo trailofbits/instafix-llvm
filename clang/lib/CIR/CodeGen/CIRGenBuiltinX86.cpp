@@ -159,13 +159,13 @@ static mlir::Value emitX86SExtMask(CIRGenFunction &cgf, mlir::Value op,
 }
 
 // Helper function to convert builtin names to LLVM intrinsic names
-std::string CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builtinName) {
+std::string
+CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builtinName) {
   // Remove "__builtin_ia32_" prefix
-  llvm::StringRef baseName = builtinName.drop_front(15); // "__builtin_ia32_".size() == 15
-
+  llvm::StringRef baseName =
+      builtinName.drop_front(15); // "__builtin_ia32_".size() == 15
   // Simple mapping for common patterns
-  // This can be extended as needed
-  static llvm::StringMap<std::string> intrinsicMap = {
+  llvm::StringMap<std::string> intrinsicMap = {
     // Load/Store operations
     {"loadups", "llvm.x86.sse.loadu.ps"},
     {"loaddqu", "llvm.x86.sse2.loadu.dq"},
@@ -234,7 +234,8 @@ std::string CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builti
     // Advanced math operations (using correct LLVM intrinsic names)
     {"sqrtps512", "llvm.x86.avx512.sqrt.ps.512"},
     {"sqrtpd512", "llvm.x86.avx512.sqrt.pd.512"},
-    // Note: SSE sqrt doesn't have LLVM intrinsics - they become regular sqrt calls
+    // Note: SSE sqrt doesn't have LLVM intrinsics - they become regular sqrt
+    // calls
     {"rcpps", "llvm.x86.sse.rcp.ps"},
     {"rsqrtps", "llvm.x86.sse.rsqrt.ps"},
     {"minpd", "llvm.x86.sse2.min.pd"},
@@ -248,6 +249,9 @@ std::string CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builti
     {"cmpeqps", "llvm.x86.sse.cmp.ps"},
     {"cmpltps", "llvm.x86.sse.cmp.ps"},
     {"cmpleps", "llvm.x86.sse.cmp.ps"},
+    {"cmpunordps", "llvm.x86.sse.cmp.ps"},
+    {"cmpunordpd", "llvm.x86.sse2.cmp.pd"},
+    {"cmpltss", "llvm.x86.sse.cmp.ss"},
 
     // Bit manipulation
     {"pand128", "llvm.x86.sse2.pand"},
@@ -291,16 +295,16 @@ std::string CIRGenFunction::convertBuiltinToIntrinsicName(llvm::StringRef builti
     return it->second;
   }
 
-  // Fallback: For intrinsics without LLVM equivalents, create a function call
-  // This allows the backend to handle it as a regular function call
-  return ("__" + baseName).str();  // e.g., "__sqrtps" becomes a function call
+  // Fallback: Return empty string for intrinsics without LLVM equivalents
+  // This will cause the fallback mechanism to return nullptr
+  return "";
 }
 
 // Generic fallback for unsupported X86 intrinsics
 // This creates a function call with the intrinsic name preserved as a string
-mlir::Value CIRGenFunction::emitX86IntrinsicFallback(unsigned BuiltinID,
-                                                     const CallExpr *E,
-                                                     llvm::ArrayRef<mlir::Value> Ops) {
+mlir::Value
+CIRGenFunction::emitX86IntrinsicFallback(unsigned BuiltinID, const CallExpr *E,
+                                         llvm::ArrayRef<mlir::Value> Ops) {
   // Get the builtin name from the BuiltinID
   std::string builtinName = getContext().BuiltinInfo.getName(BuiltinID);
 
@@ -313,6 +317,11 @@ mlir::Value CIRGenFunction::emitX86IntrinsicFallback(unsigned BuiltinID,
   // Convert builtin name to intrinsic name
   // "__builtin_ia32_addps" -> "llvm.x86.sse.add.ps"
   std::string intrinsicName = convertBuiltinToIntrinsicName(nameRef);
+
+  // If no valid intrinsic mapping found, return nullptr
+  if (intrinsicName.empty()) {
+    return nullptr;
+  }
 
   // Get the return type
   mlir::Type returnType = convertType(E->getType());
@@ -327,7 +336,6 @@ mlir::Value CIRGenFunction::emitX86IntrinsicFallback(unsigned BuiltinID,
 
   return intrinsicCall.getResult();
 }
-
 
 static mlir::Value emitX86PSLLDQIByteShift(CIRGenFunction &cgf,
                                            const CallExpr *E,
@@ -1339,6 +1347,10 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_shufps:
   case X86::BI__builtin_ia32_shufps256:
   case X86::BI__builtin_ia32_shufps512:
+    // Try generic fallback for unknown X86 intrinsics
+    if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
+      return fallbackResult;
+    }
     llvm_unreachable("shufpd NYI");
   case X86::BI__builtin_ia32_permdi256:
   case X86::BI__builtin_ia32_permdf256:
@@ -1382,23 +1394,20 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_kshiftlihi:
   case X86::BI__builtin_ia32_kshiftlisi:
   case X86::BI__builtin_ia32_kshiftlidi:
-    // llvm_unreachable("kshiftl NYI");
     // Try generic fallback for unknown X86 intrinsics
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    return nullptr;
+    llvm_unreachable("kshiftl NYI");
   case X86::BI__builtin_ia32_kshiftriqi:
   case X86::BI__builtin_ia32_kshiftrihi:
   case X86::BI__builtin_ia32_kshiftrisi:
   case X86::BI__builtin_ia32_kshiftridi:
-    // llvm_unreachable("kshiftr NYI");
     // Try generic fallback for unknown X86 intrinsics
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    return nullptr;
-
+    llvm_unreachable("kshiftr NYI");
   // Rotate is a special case of funnel shift - 1st 2 args are the same.
   case X86::BI__builtin_ia32_vprotb:
   case X86::BI__builtin_ia32_vprotw:
@@ -1741,6 +1750,10 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
     llvm_unreachable("cmpleps NYI");
   case X86::BI__builtin_ia32_cmpunordps:
   case X86::BI__builtin_ia32_cmpunordpd:
+    // Try generic fallback for unknown X86 intrinsics
+    if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
+      return fallbackResult;
+    }
     llvm_unreachable("cmpunordps NYI");
   case X86::BI__builtin_ia32_cmpneqps:
   case X86::BI__builtin_ia32_cmpneqpd:
@@ -1776,6 +1789,10 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_cmpeqss:
     llvm_unreachable("cmpeqss NYI");
   case X86::BI__builtin_ia32_cmpltss:
+    // Try generic fallback for unknown X86 intrinsics
+    if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
+      return fallbackResult;
+    }
     llvm_unreachable("cmpltss NYI");
   case X86::BI__builtin_ia32_cmpless:
     llvm_unreachable("cmpless NYI");
