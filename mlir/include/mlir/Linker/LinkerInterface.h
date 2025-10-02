@@ -87,8 +87,11 @@ public:
   LinkerInterface(Dialect *dialect)
       : DialectInterface::Base<ConcreteType>(dialect) {}
 
-  /// Runs initialization of alinker before summarization for the given module
+  /// Runs initialization of a linker before summarization for the given module
   virtual LogicalResult initialize(ModuleOp src) { return success(); }
+
+  /// Runs finalization of a linker after linking for the given module
+  virtual LogicalResult finalize(ModuleOp dst) const { return success(); }
 
   /// Link operations from current summary using state builder
   virtual LogicalResult link(LinkState &state) const = 0;
@@ -250,6 +253,14 @@ public:
   LogicalResult link(LinkState &state) const {
     for (SymbolLinkerInterface *linker : interfaces) {
       if (failed(linker->link(state)))
+        return failure();
+    }
+    return success();
+  }
+
+  LogicalResult finalize(ModuleOp dst) const {
+    for (SymbolLinkerInterface *linker : interfaces) {
+      if (failed(linker->finalize(dst)))
         return failure();
     }
     return success();

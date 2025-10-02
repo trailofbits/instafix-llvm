@@ -109,6 +109,10 @@ OwningOpRef<ModuleOp> Linker::link(bool sortSymbols) {
       symbol->moveBefore(&mod.front());
     }
   }
+  ModuleLinkerInterface *iface = getModuleLinkerInterface(composite.get());
+
+  if (failed(iface->finalize(composite.get())))
+    return nullptr;
 
   return std::move(composite);
 }
