@@ -235,6 +235,13 @@ public:
     return SymbolAttrLLVMLinkerInterface::getConflictResolution(pair);
   }
 
+  bool isLinkNeeded(Conflict pair, bool forDependency) const override {
+    if (isCIRStringLiteralConflict(pair))
+      return true;
+
+    return SymbolAttrLLVMLinkerInterface::isLinkNeeded(pair, forDependency);
+  }
+
 private:
   bool isCrossDialectConflict(Conflict pair) const {
     return pair.src->getDialect()->getNamespace() !=

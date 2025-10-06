@@ -85,17 +85,20 @@ static void renameSymbolRefIn(Operation *op, StringAttr newName) {
 
 static LogicalResult renameRemappedUsersOf(Operation *op, StringAttr newName,
                                            LinkState &state) {
-  ModuleOp module = op->getParentOfType<ModuleOp>();
-  SymbolUserMap &userMap = state.getSymbolUserMap(module);
-  // TODO: use something like SymbolTableAnalysis
-  auto users = userMap.getUsers(op);
-  for (Operation *user : users) {
-    // TODO: add test where user is not remapped
-    Operation *dstUser = state.remapped(user);
-    if (!dstUser)
-      continue;
-    renameSymbolRefIn(dstUser, newName);
-  }
+  // Get materialize (destination) operation
+  Operation *dstOp = state.remapped(op);
+  if (!dstOp)
+    return success();
+
+  // Get destination module
+  ModuleOp module = dstOp->getParentOfType<ModuleOp>();
+
+  // Old name is what the user is referencing
+  // this is the name from the source module
+  StringAttr oldName = cast<SymbolOpInterface>(op).getNameAttr();
+
+  if (failed(SymbolTable::replaceAllSymbolUses(oldName, newName, module)))
+    return failure();
   return success();
 }
 

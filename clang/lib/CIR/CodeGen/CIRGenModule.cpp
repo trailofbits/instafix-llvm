@@ -1843,29 +1843,7 @@ cir::GlobalOp CIRGenModule::getGlobalForStringLiteral(const StringLiteral *s,
       assert(0 && "not implemented");
     } else {
       lt = cir::GlobalLinkageKind::PrivateLinkage;
-
-      // Generate library-specific string literal names to avoid cross-library
-      // conflicts This prevents the "cir.str.21" collision issue when multiple
-      // libraries independently generate string literals with the same counter
-      // values
-      std::string librarySpecificName = name.str();
-
-      // Extract library context from the current source file being compiled
-      if (const auto &SM = getASTContext().getSourceManager();
-          SM.getMainFileID().isValid()) {
-        if (const auto *FE = SM.getFileEntryForID(SM.getMainFileID())) {
-          llvm::StringRef fileName = FE->tryGetRealPathName();
-          // Extract just the base filename without path and extension
-          llvm::StringRef baseName = llvm::sys::path::stem(fileName);
-          if (!baseName.empty()) {
-            // Create library-specific prefix: "cir.str" -> "cir.basename.str"
-            librarySpecificName = "cir." + baseName.str() + "." +
-                                  name.str().substr(4); // Remove "cir." prefix
-          }
-        }
-      }
-
-      globalVariableName = librarySpecificName;
+      globalVariableName = name;
     }
 
     // Unlike LLVM IR, CIR doesn't automatically unique names for globals, so
