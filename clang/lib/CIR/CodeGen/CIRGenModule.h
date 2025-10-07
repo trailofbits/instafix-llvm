@@ -453,13 +453,13 @@ public:
 
   /// Return a global op for the given string literal.
   cir::GlobalOp getGlobalForStringLiteral(const StringLiteral *s,
-                                          llvm::StringRef name = "cir.str");
+                                          llvm::StringRef name = ".str");
 
   /// Return a global symbol reference to a constant array for the given string
   /// literal.
   cir::GlobalViewAttr
   getAddrOfConstantStringFromLiteral(const StringLiteral *S,
-                                     llvm::StringRef Name = "cir.str");
+                                     llvm::StringRef Name = ".str");
 
   unsigned CompoundLitaralCnt = 0;
   /// Return the unique name for global compound literal
