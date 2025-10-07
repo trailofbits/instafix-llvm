@@ -3062,9 +3062,7 @@ void CIRGenModule::setFunctionAttributes(GlobalDecl globalDecl,
   // recompute it here. This is a minimal fix for now.
   if (!isLocalLinkage(getFunctionLinkage(globalDecl))) {
     const auto *decl = globalDecl.getDecl();
-    if (decl->hasAttr<clang::VisibilityAttr>()) {
-      func.setGlobalVisibilityAttr(getGlobalVisibilityAttrFromDecl(decl));
-    }
+    func.setGlobalVisibilityAttr(getGlobalVisibilityAttrFromDecl(decl));
   }
 }
 

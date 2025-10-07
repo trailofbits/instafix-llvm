@@ -212,64 +212,6 @@ public:
 
     llvm_unreachable("unexpected operation");
   }
-
-  ConflictResolution getConflictResolution(Conflict pair) const override {
-    // Check if this is a cross-dialect conflict
-    if (isCrossDialectConflict(pair)) {
-      // always rename CIR symbols to avoid conflicts
-      if (pair.src->getDialect()->getNamespace() == "cir") {
-        return ConflictResolution::LinkFromBothAndRenameSrc;
-      } else {
-        return ConflictResolution::LinkFromBothAndRenameDst;
-      }
-    }
-
-    // Handle same-dialect CIR string literal conflicts
-    if (isCIRStringLiteralConflict(pair)) {
-      return ConflictResolution::LinkFromBothAndRenameSrc;
-    }
-
-    return SymbolAttrLLVMLinkerInterface::getConflictResolution(pair);
-  }
-
-  bool isLinkNeeded(Conflict pair, bool forDependency) const override {
-    if (isCIRStringLiteralConflict(pair))
-      return true;
-
-    return SymbolAttrLLVMLinkerInterface::isLinkNeeded(pair, forDependency);
-  }
-
-private:
-  bool isCrossDialectConflict(Conflict pair) const {
-    return pair.src->getDialect()->getNamespace() !=
-           pair.dst->getDialect()->getNamespace();
-  }
-
-  bool isCIRStringLiteralConflict(Conflict pair) const {
-    // Must have a conflict (dst must not be null)
-    if (!pair.hasConflict())
-      return false;
-
-    // Check if both operations are CIR globals
-    auto srcGlobal = dyn_cast<cir::GlobalOp>(pair.src);
-    auto dstGlobal = dyn_cast<cir::GlobalOp>(pair.dst);
-
-    if (!srcGlobal || !dstGlobal)
-      return false;
-
-    // Check if both are from CIR dialect
-    if (pair.src->getDialect()->getNamespace() != "cir" ||
-        pair.dst->getDialect()->getNamespace() != "cir") {
-      return false;
-    }
-
-    // Check if symbol names look like CIR string literals
-    StringRef srcName = getSymbol(pair.src);
-    StringRef dstName = getSymbol(pair.dst);
-
-    // Both should be CIR string literals (cir.str, cir.str.1, cir.str.21, etc.)
-    return srcName.starts_with("cir.str") && dstName.starts_with("cir.str");
-  }
 };
 
 void registerLinkerInterface(mlir::DialectRegistry &registry);
