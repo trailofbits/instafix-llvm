@@ -225,10 +225,7 @@ public:
     }
 
     // Handle same-dialect CIR string literal conflicts
-    // This prevents the "external linkage failure" in LLVMLinkerMixin
     if (isCIRStringLiteralConflict(pair)) {
-      // Treat CIR string literals as if they had internal linkage
-      // (allows automatic renaming like LLVM string literals)
       return ConflictResolution::LinkFromBothAndRenameSrc;
     }
 
@@ -249,6 +246,10 @@ private:
   }
 
   bool isCIRStringLiteralConflict(Conflict pair) const {
+    // Must have a conflict (dst must not be null)
+    if (!pair.hasConflict())
+      return false;
+
     // Check if both operations are CIR globals
     auto srcGlobal = dyn_cast<cir::GlobalOp>(pair.src);
     auto dstGlobal = dyn_cast<cir::GlobalOp>(pair.dst);
