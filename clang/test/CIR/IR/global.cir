@@ -70,9 +70,9 @@ module {
     cir.return
   }
 
-  cir.global external addrspace(<offload_global>) @addrspace1 = #cir.int<1> : !s32i
-  cir.global "private" internal addrspace(<offload_local>) @addrspace2 : !s32i
-  cir.global external addrspace(<target<1>>) @addrspace3 = #cir.int<3> : !s32i
+  cir.global external addrspace(offload_global) @addrspace1 = #cir.int<1> : !s32i
+  cir.global "private" internal addrspace(offload_local) @addrspace2 : !s32i
+  cir.global external addrspace(target<1>) @addrspace3 = #cir.int<3> : !s32i
 }
 
 // CHECK: cir.global external @a = #cir.int<3> : !s32i
@@ -109,6 +109,6 @@ module {
 // CHECK:   cir.return
 // CHECK: }
 
-// CHECK: cir.global external addrspace(<offload_global>) @addrspace1 = #cir.int<1> : !s32i
-// CHECK: cir.global "private" internal addrspace(<offload_local>) @addrspace2 : !s32i
-// CHECK: cir.global external addrspace(<target<1>>) @addrspace3 = #cir.int<3> : !s32i
+// CHECK: cir.global external addrspace(offload_global) @addrspace1 = #cir.int<1> : !s32i
+// CHECK: cir.global "private" internal addrspace(offload_local) @addrspace2 : !s32i
+// CHECK: cir.global external addrspace(target<1>) @addrspace3 = #cir.int<3> : !s32i

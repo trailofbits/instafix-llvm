@@ -75,13 +75,10 @@ static StringAttr getUniqueNameIn(SymbolTable &st, StringAttr name) {
   return name;
 }
 
-static void renameSymbolRefIn(Operation *op, StringAttr oldName,
-                              StringAttr newName) {
+static void renameSymbolRefIn(Operation *op, StringAttr newName) {
   AttrTypeReplacer replacer;
   replacer.addReplacement([&](SymbolRefAttr attr) {
-    if (attr.getRootReference() == oldName)
-      return SymbolRefAttr::get(newName, attr.getNestedReferences());
-    return attr;
+    return SymbolRefAttr::get(newName, attr.getNestedReferences());
   });
   replacer.replaceElementsIn(op);
 }
@@ -89,9 +86,6 @@ static void renameSymbolRefIn(Operation *op, StringAttr oldName,
 static LogicalResult renameRemappedUsersOf(Operation *op, StringAttr newName,
                                            LinkState &state) {
   ModuleOp module = op->getParentOfType<ModuleOp>();
-  // Get name within object file to rename it later after linking to final
-  // binary
-  StringAttr oldName = cast<SymbolOpInterface>(op).getNameAttr();
 
   // Get a mapping of all the users
   SymbolUserMap &userMap = state.getSymbolUserMap(module);
@@ -102,7 +96,7 @@ static LogicalResult renameRemappedUsersOf(Operation *op, StringAttr newName,
     if (!dstUser)
       continue;
 
-    renameSymbolRefIn(dstUser, oldName, newName);
+    renameSymbolRefIn(dstUser, newName);
   }
   return success();
 }

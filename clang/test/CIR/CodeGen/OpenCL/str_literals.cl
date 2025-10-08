@@ -6,10 +6,10 @@
 __constant char *__constant x = "hello world";
 __constant char *__constant y = "hello world";
 
-// CIR: cir.global{{.*}} constant {{.*}}addrspace(<offload_constant>) @".str" = #cir.const_array<"hello world\00" : !cir.array<!s8i x 12>> : !cir.array<!s8i x 12>
-// CIR: cir.global{{.*}} constant {{.*}}addrspace(<offload_constant>) @x = #cir.global_view<@".str"> : !cir.ptr<!s8i, addrspace(offload_constant)>
-// CIR: cir.global{{.*}} constant {{.*}}addrspace(<offload_constant>) @y = #cir.global_view<@".str"> : !cir.ptr<!s8i, addrspace(offload_constant)>
-// CIR: cir.global{{.*}} constant {{.*}}addrspace(<offload_constant>) @".str.1" = #cir.const_array<"f\00" : !cir.array<!s8i x 2>> : !cir.array<!s8i x 2>
+// CIR: cir.global{{.*}} constant {{.*}}addrspace(offload_constant) @".str" = #cir.const_array<"hello world\00" : !cir.array<!s8i x 12>> : !cir.array<!s8i x 12>
+// CIR: cir.global{{.*}} constant {{.*}}addrspace(offload_constant) @x = #cir.global_view<@".str"> : !cir.ptr<!s8i, addrspace(offload_constant)>
+// CIR: cir.global{{.*}} constant {{.*}}addrspace(offload_constant) @y = #cir.global_view<@".str"> : !cir.ptr<!s8i, addrspace(offload_constant)>
+// CIR: cir.global{{.*}} constant {{.*}}addrspace(offload_constant) @".str.1" = #cir.const_array<"f\00" : !cir.array<!s8i x 2>> : !cir.array<!s8i x 2>
 // LLVM: addrspace(2) constant{{.*}}"hello world\00"
 // LLVM-NOT: addrspace(2) constant
 // LLVM: @x = {{(dso_local )?}}addrspace(2) constant ptr addrspace(2)
