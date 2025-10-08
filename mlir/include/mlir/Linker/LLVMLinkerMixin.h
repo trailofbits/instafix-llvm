@@ -374,6 +374,12 @@ public:
       if (srcComdat == mlir::LLVM::comdat::Comdat::NoDeduplicate) {
         return ConflictResolution::Failure;
       }
+      if (srcComdat == mlir::LLVM::comdat::Comdat::ExactMatch) {
+        return ConflictResolution::LinkFromDst;
+      }
+      if (srcComdat == mlir::LLVM::comdat::Comdat::SameSize) {
+        return ConflictResolution::LinkFromDst;
+      }
       llvm_unreachable("unimplemented comdat kind");
     }
 
@@ -383,6 +389,20 @@ public:
         !srcIsDeclaration && !dstIsDeclaration) {
       return ConflictResolution::Failure;
     }
+
+    if (!srcIsDeclaration && !dstIsDeclaration)
+      return ConflictResolution::Failure;
+
+    if (!srcIsDeclaration && dstIsDeclaration)
+      return ConflictResolution::LinkFromSrc;
+
+    if (srcIsDeclaration && !dstIsDeclaration)
+      return ConflictResolution::LinkFromDst;
+
+    // For same-type linkages not handled above, prefer dst to maintain
+    // stability
+    if (srcLinkage == dstLinkage)
+      return ConflictResolution::LinkFromDst;
 
     llvm_unreachable("unimplemented conflict resolution");
   }
