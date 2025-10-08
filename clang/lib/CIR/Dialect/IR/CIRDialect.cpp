@@ -2392,6 +2392,8 @@ cir::GetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return success();
 }
 
+mlir::SymbolRefAttr cir::GetGlobalOp::getUserSymbol() { return getNameAttr(); }
+
 //===----------------------------------------------------------------------===//
 // VTableAddrPointOp
 //===----------------------------------------------------------------------===//
@@ -2415,6 +2417,9 @@ cir::VTableAddrPointOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
            << name << "'";
   return success();
 }
+
+mlir::SymbolRefAttr
+cir::VTableAddrPointOp::getUserSymbol() { return getNameAttr(); }
 
 //===----------------------------------------------------------------------===//
 // VTTAddrPointOp
@@ -2463,6 +2468,9 @@ LogicalResult cir::VTTAddrPointOp::verify() {
            << resTy << "', but provided result type is '" << resultType << "'";
   return success();
 }
+
+mlir::SymbolRefAttr
+cir::VTTAddrPointOp::getUserSymbol() { return getNameAttr(); }
 
 //===----------------------------------------------------------------------===//
 // FuncOp
@@ -3306,6 +3314,9 @@ cir::CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return parseCallCommon(parser, result, getExtraAttrsAttrName(result.name));
 }
 
+mlir::SymbolRefAttr
+cir::CallOp::getUserSymbol() { return getCalleeAttr(); }
+
 void cir::CallOp::print(::mlir::OpAsmPrinter &state) {
   mlir::Value indirectCallee = isIndirect() ? getIndirectCall() : nullptr;
   cir::CallingConv callingConv = getCallingConv();
@@ -3385,6 +3396,9 @@ mlir::SuccessorOperands cir::TryCallOp::getSuccessorOperands(unsigned index) {
   // index == 2
   return SuccessorOperands(getArgOperandsMutable());
 }
+
+mlir::SymbolRefAttr
+cir::TryCallOp::getUserSymbol() { return getCalleeAttr(); }
 
 //===----------------------------------------------------------------------===//
 // UnaryOp
@@ -4160,6 +4174,9 @@ cir::EhTypeIdOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
            << getTypeSym() << "' does not reference a valid cir.global";
   return success();
 }
+
+mlir::SymbolRefAttr
+cir::EhTypeIdOp::getUserSymbol() { return getTypeSymAttr(); }
 
 //===----------------------------------------------------------------------===//
 // CatchParamOp
