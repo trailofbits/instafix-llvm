@@ -2557,7 +2557,8 @@ def CIR_GlobalOp : CIR_Op<"global", [
 //===----------------------------------------------------------------------===//
 
 def CIR_GetGlobalOp : CIR_Op<"get_global", [
-  Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  Pure, SymbolUserOpInterface,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>
 ]> {
   let summary = "Get the address of a global variable";
   let description = [{
@@ -2595,7 +2596,8 @@ def CIR_GetGlobalOp : CIR_Op<"get_global", [
 //===----------------------------------------------------------------------===//
 
 def CIR_VTableAddrPointOp : CIR_Op<"vtable.address_point", [
-  Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  Pure, SymbolUserOpInterface,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>
 ]> {
   let summary = "Get the vtable (global variable) address point";
   let description = [{
@@ -2873,7 +2875,8 @@ def CIR_VTableGetVirtualFnAddrOp : CIR_Op<"vtable.get_virtual_fn_addr", [
 //===----------------------------------------------------------------------===//
 
 def CIR_VTTAddrPointOp : CIR_Op<"vtt.address_point", [
-  Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>
+  Pure, SymbolUserOpInterface,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>
 ]> {
   let summary = "Get the VTT address point";
   let description = [{
@@ -4201,8 +4204,9 @@ def CIR_SideEffect : CIR_I32EnumAttr<
 
 class CIR_CallOp<string mnemonic, list<Trait> extra_traits = []>
     : CIR_Op<mnemonic, !listconcat(extra_traits, [
+        SymbolUserOpInterface,
         DeclareOpInterfaceMethods<CIRCallOpInterface>,
-        DeclareOpInterfaceMethods<SymbolUserOpInterface>
+        DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>
       ])>
 {
   let extraClassDeclaration = [{
@@ -4682,8 +4686,10 @@ def CIR_EhInflightOp : CIR_Op<"eh.inflight_exception"> {
   }];
 }
 
-def CIR_EhTypeIdOp : CIR_Op<"eh.typeid",
-  [Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+def CIR_EhTypeIdOp : CIR_Op<"eh.typeid", [
+  Pure, SymbolUserOpInterface,
+  DeclareOpInterfaceMethods<SymbolUserOpInterface, ["getUserSymbol"]>
+]> {
   let summary = "Compute exception type id from it's global type symbol";
   let description = [{
     Returns the exception type id for a given global symbol representing
