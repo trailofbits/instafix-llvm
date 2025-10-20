@@ -535,8 +535,11 @@ Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
     return appendGlobalStructors<LLVM::GlobalDtorsOp>(state);
 
   const auto &globs = append.lookup(glob);
-  if (globs.empty())
+  if (globs.empty()) {
+    if (auto found = summary.find(glob); found != summary.end())
+      return state.clone(found->second);
     return nullptr;
+  }
   if (auto lastGV = dyn_cast<LLVM::GlobalOp>(globs.back()))
     return appendGlobalOps(globs, lastGV, state);
   if (auto comdat = dyn_cast<LLVM::ComdatOp>(globs.back()))
