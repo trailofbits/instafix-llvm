@@ -99,11 +99,22 @@ bool CIRSymbolLinkerInterface::isComdat(Operation *op) {
   return false;
 }
 
-std::optional<link::ComdatSelector>
-CIRSymbolLinkerInterface::getComdatSelector(Operation *op) {
-  // TODO(frabert): Extracting comdat info from CIR is not implemented yet
-  return std::nullopt;
+bool CIRSymbolLinkerInterface::hasComdat(Operation *op) {
+  // TODO: Extracting comdat info from CIR is not implemented yet
+  return false;
 }
+
+const link::Comdat *
+CIRSymbolLinkerInterface::getComdatResolution(Operation *op) {
+  return nullptr;
+}
+
+bool CIRSymbolLinkerInterface::selectedByComdat(Operation *op) {
+  // TODO: Extracting comdat info from CIR is not implemented yet
+  llvm_unreachable("comdat resolution not implemented for CIR");
+}
+
+void CIRSymbolLinkerInterface::updateNoDeduplicate(Operation *op) {}
 
 Visibility CIRSymbolLinkerInterface::getVisibility(Operation *op) {
   if (auto gv = dyn_cast<GlobalOp>(op))

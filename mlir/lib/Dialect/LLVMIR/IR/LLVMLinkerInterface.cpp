@@ -75,15 +75,17 @@ void LLVM::LLVMSymbolLinkerInterface::setVisibility(Operation *op,
   llvm_unreachable("unexpected operation");
 }
 
-static bool hasComdat(Operation *op) {
+bool LLVM::LLVMSymbolLinkerInterface::hasComdat(Operation *op) {
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
     return gv.getComdat().has_value();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getComdat().has_value();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp>(op))
+    return false;
   llvm_unreachable("unexpected operation");
 }
 
-static SymbolRefAttr getComdatSymbol(Operation *op) {
+SymbolRefAttr LLVM::LLVMSymbolLinkerInterface::getComdatSymbol(Operation *op) {
   assert(hasComdat(op) && "Operation with Comdat expected");
   if (auto gv = dyn_cast<LLVM::GlobalOp>(op))
     return gv.getComdat().value();
@@ -96,16 +98,11 @@ bool LLVM::LLVMSymbolLinkerInterface::isComdat(Operation *op) {
   return isa<LLVM::ComdatOp>(op);
 }
 
-std::optional<mlir::link::ComdatSelector>
-LLVM::LLVMSymbolLinkerInterface::getComdatSelector(Operation *op) {
-  if (!hasComdat(op))
-    return std::nullopt;
-
-  auto symbol = getComdatSymbol(op);
-  auto *symTabOp = SymbolTable::getNearestSymbolTable(op);
-  auto comdatSelector = cast<mlir::LLVM::ComdatSelectorOp>(
-      SymbolTable::lookupSymbolIn(symTabOp, symbol));
-  return {{comdatSelector.getSymName(), comdatSelector.getComdat()}};
+LLVM::comdat::Comdat
+LLVM::LLVMSymbolLinkerInterface::getComdatSelectionKind(Operation *op) {
+  if (auto selector = dyn_cast<LLVM::ComdatSelectorOp>(op))
+    return selector.getComdat();
+  llvm_unreachable("expected selector op");
 }
 
 // Return true if the primary definition of this global value is outside of
@@ -248,9 +245,7 @@ Operation *
 LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
                                              LinkState &state) {
   auto &derived = LinkerMixin::getDerived();
-  // empty append means that we either have single module or that something went
-  // wrong
-  if (isAppendingLinkage(derived.getLinkage(src)) && !append.empty()) {
+  if (isAppendingLinkage(derived.getLinkage(src))) {
     return derived.appendGlobals(derived.getSymbol(src), state);
   }
   return SymbolAttrLinkerInterface::materialize(src, state);
@@ -298,16 +293,23 @@ SmallVector<Operation *> LLVM::LLVMSymbolLinkerInterface::dependencies(
   // walk and reference the symbols in an attribute. We have to intercept on
   // these operations.
   ArrayAttr structors = {};
+  ArrayAttr data = {};
   if (auto ctor = dyn_cast<GlobalCtorsOp>(op)) {
     structors = ctor.getCtors();
+    data = ctor.getData();
   }
   if (auto dtor = dyn_cast<GlobalDtorsOp>(op)) {
     structors = dtor.getDtors();
+    data = dtor.getData();
   }
 
   if (structors) {
     for (auto structor : structors)
       insertDepIfExists(cast<FlatSymbolRefAttr>(structor));
+    for (auto dataAttr : data)
+      if (auto symbolRef = dyn_cast<FlatSymbolRefAttr>(dataAttr))
+        insertDepIfExists(symbolRef);
+
     return result;
   }
 
@@ -500,6 +502,11 @@ LogicalResult LLVM::LLVMSymbolLinkerInterface::finalize(ModuleOp dst) const {
   return success();
 }
 
+LogicalResult LLVM::LLVMSymbolLinkerInterface::moduleOpSummary(
+    ModuleOp src, SymbolTableCollection &collection) {
+  return resolveComdats(src, collection);
+}
+
 static std::pair<Attribute, Type>
 getAppendedArrayAttr(llvm::ArrayRef<mlir::Operation *> globs,
                      LinkState &state) {
@@ -679,28 +686,17 @@ static Operation *appendGlobalOps(ArrayRef<Operation *> globs,
   llvm_unreachable("unknown value attribute type");
 }
 
-static Operation *appendComdatOps(ArrayRef<Operation *> globs,
-                                  LLVM::ComdatOp comdat, LinkState &state) {
-  auto result = cast<LLVM::ComdatOp>(state.clone(comdat));
-  llvm::StringMap<Operation *> selectors;
+Operation *LLVM::LLVMSymbolLinkerInterface::appendComdatOps(
+    ArrayRef<Operation *> globs, LLVM::ComdatOp comdat, LinkState &state) {
+  auto result =
+      state.create<LLVM::ComdatOp>(comdat.getLoc(), comdat.getSymName());
 
-  for (auto selector : result.getOps<LLVM::ComdatSelectorOp>()) {
-    selectors[selector.getSymName()] = selector;
-  }
+  auto guard = OpBuilder::InsertionGuard(state.getBuilder());
+  state.getBuilder().setInsertionPointToStart(&result.getBody().front());
 
-  for (auto *glob : globs) {
-    comdat = dyn_cast<LLVM::ComdatOp>(glob);
-    for (auto &op : comdat.getBody().getOps()) {
-      auto selector = cast<LLVM::ComdatSelectorOp>(op);
-      auto selectorName = selector.getSymName();
-      if (selectors.contains(selectorName)) {
-        continue;
-      }
-      auto *cloned = state.clone(selector);
-      cloned->moveBefore(&result.getBody().front().back());
-      selectors[selectorName] = cloned;
-    }
-  }
+  for (auto &&[name, comdatResPair] : comdatResolution)
+    state.clone(comdatResPair.selectorOp);
+
   return result;
 }
 
@@ -722,6 +718,195 @@ Operation *LLVM::LLVMSymbolLinkerInterface::appendGlobals(llvm::StringRef glob,
   if (auto comdat = dyn_cast<LLVM::ComdatOp>(globs.back()))
     return appendComdatOps(globs, comdat, state);
   llvm_unreachable("unexpected operation");
+}
+
+ComdatResolution LLVM::LLVMSymbolLinkerInterface::computeComdatResolution(
+    Operation *srcSelector, SymbolTableCollection &collection,
+    Comdat *dstComdat) {
+  // For reference check llvm/lib/Linker/LinkModules.cpp
+  // computeResultingSelectionKind
+  ComdatKind srcKind = getComdatSelectionKind(srcSelector);
+  ComdatKind dstKind = dstComdat->kind;
+  bool dstAnyOrLargest =
+      dstKind == ComdatKind::Any || dstKind == ComdatKind::Largest;
+  bool srcAnyOrLargest =
+      srcKind == ComdatKind::Any || srcKind == ComdatKind::Largest;
+
+  ComdatKind resolutionKind;
+  if (dstAnyOrLargest && srcAnyOrLargest) {
+    if (dstKind == ComdatKind::Largest || srcKind == ComdatKind::Largest) {
+      resolutionKind = ComdatKind::Largest;
+    } else {
+      resolutionKind = ComdatKind::Any;
+    }
+  } else if (srcKind == dstKind) {
+    resolutionKind = dstKind;
+  } else {
+    return ComdatResolution::Failure;
+  }
+
+  auto computeSize = [&](GlobalOp op) -> llvm::TypeSize {
+    auto dataLayout = DataLayout(op->getParentOfType<ModuleOp>());
+    return dataLayout.getTypeSize(op.getType());
+  };
+
+  auto getComdatLeader = [&](Operation *selector) -> GlobalOp {
+    SymbolTable &st =
+        collection.getSymbolTable(selector->getParentOfType<ModuleOp>());
+    Operation *leader = st.lookup(getSymbol(selector));
+
+    while (auto alias = dyn_cast_if_present<AliasOp>(leader))
+      for (AddressOfOp addrOf : alias.getInitializer().getOps<AddressOfOp>())
+        leader = st.lookup(addrOf.getGlobalName());
+
+    if (hasComdat(leader) &&
+        getComdatSymbol(leader).getLeafReference() == getSymbol(leader))
+      return mlir::dyn_cast<GlobalOp>(leader);
+
+    return {};
+  };
+
+  switch (resolutionKind) {
+  case ComdatKind::Any:
+    return ComdatResolution::LinkFromDst;
+  case ComdatKind::NoDeduplicate:
+    return ComdatResolution::LinkFromBoth;
+  case ComdatKind::ExactMatch: {
+    GlobalOp srcLeader = getComdatLeader(srcSelector);
+    GlobalOp dstLeader = getComdatLeader(dstComdat->selectorOp);
+    assert(srcLeader && dstLeader && "Couldn't find comdat leader");
+    return OperationEquivalence::isEquivalentTo(
+               dstLeader, srcLeader,
+               OperationEquivalence::Flags::IgnoreLocations)
+               ? ComdatResolution::Failure
+               : ComdatResolution::LinkFromDst;
+  }
+  case ComdatKind::Largest: {
+    GlobalOp srcLeader = getComdatLeader(srcSelector);
+    GlobalOp dstLeader = getComdatLeader(dstComdat->selectorOp);
+    assert(srcLeader && dstLeader && "Size based comdat without valid leader");
+    return computeSize(srcLeader) > computeSize(dstLeader)
+               ? ComdatResolution::LinkFromSrc
+               : ComdatResolution::LinkFromDst;
+  }
+  case ComdatKind::SameSize:
+    GlobalOp srcLeader = getComdatLeader(srcSelector);
+    GlobalOp dstLeader = getComdatLeader(dstComdat->selectorOp);
+    assert(srcLeader && dstLeader && "Size based comdat without valid leader");
+    return computeSize(srcLeader) == computeSize(dstLeader)
+               ? ComdatResolution::Failure
+               : ComdatResolution::LinkFromDst;
+  }
+}
+
+void LLVM::LLVMSymbolLinkerInterface::dropReplacedComdat(Operation *op) const {
+  // TODO replace aliases of dropped COMDAT ops; see dropReplacedComdat in
+  // llvm-link llvm-link test is comdat-rm-dst.ll
+  if (auto global = mlir::dyn_cast<LLVM::GlobalOp>(op)) {
+    global.removeValueAttr();
+
+    Region &initializer = global.getInitializer();
+    initializer.dropAllReferences();
+    initializer.getBlocks().clear();
+
+    global.removeComdatAttr();
+    global.setLinkage(Linkage::AvailableExternally);
+  }
+
+  if (auto func = mlir::dyn_cast<LLVM::LLVMFuncOp>(op)) {
+    Region &body = func.getBody();
+    body.dropAllReferences();
+    body.getBlocks().clear();
+
+    func.removeComdatAttr();
+    func.setLinkage(Linkage::AvailableExternally);
+  }
+}
+
+void LLVM::LLVMSymbolLinkerInterface::updateNoDeduplicate(Operation *op) {
+  if (auto global = mlir::dyn_cast<LLVM::GlobalOp>(op)) {
+    global.setVisibility_(LLVM::Visibility::Default);
+    global.setDsoLocal(true);
+    global.setLinkage(LLVM::Linkage::Private);
+  } else {
+    llvm_unreachable("Only globals should have NoDeduplicate comdat");
+  }
+}
+
+LogicalResult LLVM::LLVMSymbolLinkerInterface::resolveComdats(
+    ModuleOp srcMod, SymbolTableCollection &collection) {
+  LLVM::ComdatOp srcComdatOp =
+      collection.getSymbolTable(srcMod).lookup<LLVM::ComdatOp>(
+          "__llvm_global_comdat");
+
+  // Nothing to do
+  if (!srcComdatOp)
+    return success();
+
+  // TODO: Figure out how to share this map with the rest of the linker
+  SymbolUserMap srcSymbolUsers(collection,
+                               srcComdatOp->getParentOfType<ModuleOp>());
+
+  for (Operation &op : srcComdatOp.getBody().front()) {
+    auto srcSelector = cast<LLVM::ComdatSelectorOp>(op);
+    auto dstComdatIt = comdatResolution.find(getSymbol(&op));
+    link::Comdat *dstComdat =
+        dstComdatIt == comdatResolution.end() ? nullptr : &dstComdatIt->second;
+
+    // If no conflict choose src
+    ComdatResolution res =
+        dstComdat ? computeComdatResolution(srcSelector, collection, dstComdat)
+                  : ComdatResolution::LinkFromSrc;
+
+    switch (res) {
+    case ComdatResolution::LinkFromSrc: {
+      // COMDAT group is used or dropped as a whole, remove all users of dropped
+      // COMDAT if present
+      // Drop all users before replacing the value
+      if (dstComdat)
+        for (Operation *dstUser : dstComdat->users)
+          dropReplacedComdat(dstUser);
+      ArrayRef<Operation *> users = srcSymbolUsers.getUsers(&op);
+      comdatResolution[getSymbol(srcSelector)] =
+          link::Comdat{getComdatSelectionKind(srcSelector),
+                       srcSelector,
+                       {users.begin(), users.end()}};
+      break;
+    }
+    case ComdatResolution::LinkFromDst:
+      continue;
+    case ComdatResolution::LinkFromBoth: {
+      ArrayRef<Operation *> users = srcSymbolUsers.getUsers(&op);
+      dstComdat->users.insert(users.begin(), users.end());
+      break;
+    }
+    case ComdatResolution::Failure:
+      return failure();
+    }
+  }
+  return success();
+}
+
+const link::Comdat *
+LLVM::LLVMSymbolLinkerInterface::getComdatResolution(Operation *op) const {
+  if (hasComdat(op)) {
+    auto resolutionIt = comdatResolution.find(
+        getComdatSymbol(op).getLeafReference().getValue());
+    return resolutionIt != comdatResolution.end() ? &resolutionIt->second
+                                                  : nullptr;
+  }
+  return nullptr;
+}
+
+bool LLVM::LLVMSymbolLinkerInterface::selectedByComdat(Operation *op) const {
+  assert(hasComdat(op) && "expected operation with comdat");
+
+  if (auto comdatIt = comdatResolution.find(
+          getComdatSymbol(op).getLeafReference().getValue());
+      comdatIt != comdatResolution.end()) {
+    return comdatIt->second.users.contains(op);
+  }
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

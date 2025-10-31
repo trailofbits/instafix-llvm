@@ -37,21 +37,14 @@ public:
 
   LogicalResult summarize(ModuleOp src, unsigned flags,
                           SymbolTableCollection &collection) override {
+    if (symbolLinkers.moduleOpSummary(src, symbolTableCollection).failed())
+      return failure();
     // Collect all operations to process in parallel
     SmallVector<Operation *> ops;
-    WalkResult result = src.walk([&](Operation *op) {
-      if (op == src) {
-        if (symbolLinkers.moduleOpSummary(src).failed())
-          return WalkResult::interrupt();
-        return WalkResult::advance();
-      }
-      ops.push_back(op);
-      return WalkResult::advance();
+    src.walk([&](Operation *op) {
+      if (op != src)
+        ops.push_back(op);
     });
-
-    if (result.wasInterrupted()) {
-      return failure();
-    }
 
     // Process operations in parallel
     return failableParallelForEach(

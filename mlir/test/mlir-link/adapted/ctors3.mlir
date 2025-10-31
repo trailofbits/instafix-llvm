@@ -1,4 +1,4 @@
-// RUN: mlir-link %s %S/Inputs/ctors2.mlir | FileCheck %s
+// RUN: mlir-link %s %S/Inputs/ctors3.mlir | FileCheck %s
 
 // CHECK: llvm.mlir.global_ctors ctors = [], priorities = [], data = []
 // CHECK llvm.mlir.global external @foo() comdat

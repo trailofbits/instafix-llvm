@@ -16,7 +16,9 @@ public:
   static Visibility getVisibility(Operation *op);
   static void setVisibility(Operation *op, Visibility visibility);
   static bool isComdat(Operation *op);
-  static std::optional<link::ComdatSelector> getComdatSelector(Operation *op);
+  static bool hasComdat(Operation *op);
+  static SymbolRefAttr getComdatSymbol(Operation *op);
+  static LLVM::comdat::Comdat getComdatSelectionKind(Operation *op);
   static bool isDeclaration(Operation *op);
   static unsigned getBitWidth(Operation *op);
   static UnnamedAddr getUnnamedAddr(Operation *op);
@@ -34,7 +36,19 @@ public:
   dependencies(Operation *op, SymbolTableCollection &collection) const override;
   LogicalResult initialize(ModuleOp src) override;
   LogicalResult finalize(ModuleOp dst) const override;
+  LogicalResult moduleOpSummary(ModuleOp src,
+                                SymbolTableCollection &collection) override;
   Operation *appendGlobals(llvm::StringRef glob, link::LinkState &state);
+  Operation *appendComdatOps(ArrayRef<Operation *> globs, LLVM::ComdatOp comdat,
+                             link::LinkState &state);
+  link::ComdatResolution
+  computeComdatResolution(Operation *, SymbolTableCollection &, link::Comdat *);
+  LogicalResult resolveComdats(ModuleOp srcMod,
+                               SymbolTableCollection &collection);
+  const link::Comdat *getComdatResolution(Operation *op) const;
+  bool selectedByComdat(Operation *op) const;
+  void dropReplacedComdat(Operation *op) const;
+  static void updateNoDeduplicate(Operation *op);
 
   LogicalResult link(link::LinkState &state) override;
 
@@ -90,14 +104,19 @@ public:
       ArrayRef<Attribute> priorities = structor.getPriorities().getValue();
       ArrayRef<Attribute> data = structor.getData().getValue();
 
-      for (auto [idx, dataAttr] : llvm::enumerate(data)) {
+      for (auto [idx, structor] : llvm::enumerate(structorList)) {
+        auto structorSymbol = cast<FlatSymbolRefAttr>(structor);
+        // Skip constructors not included based on COMDAT
+        if (!summary.contains(structorSymbol.getValue()))
+          continue;
+
+        auto dataAttr = data[idx];
         // data value is either #llvm.zero or symbol ref
         // if it is zero, we always have to include the value
         // if it is a symbol ref, we have to check if the symbol
         // from the same module is being used
-        //
         if (auto globalSymbol = dyn_cast<FlatSymbolRefAttr>(dataAttr)) {
-          auto globalOp = summary.lookup(globalSymbol.getValue());
+          Operation *globalOp = summary.lookup(globalSymbol.getValue());
           assert(globalOp && "structor referenced global not in summary?");
           // globals are definde at module level
           if (globalOp->getParentOp() != op->getParentOp())
@@ -105,7 +124,7 @@ public:
         }
 
         newData.push_back(dataAttr);
-        newStructorList.push_back(structorList[idx]);
+        newStructorList.push_back(structor);
         newPriorities.push_back(priorities[idx]);
       }
     }
@@ -141,6 +160,7 @@ private:
   /// When a function is defined with different signatures in different modules,
   /// we track both types here so we can later fix call sites.
   mutable llvm::StringMap<std::pair<Type, Type>> mismatchedFunctions;
+  mutable llvm::StringMap<link::Comdat> comdatResolution;
 };
 
 } // namespace LLVM
