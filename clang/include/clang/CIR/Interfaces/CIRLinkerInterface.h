@@ -45,8 +45,13 @@ public:
 
   static bool isComdat(Operation *op);
 
-  static std::optional<mlir::link::ComdatSelector>
-  getComdatSelector(Operation *op);
+  static bool hasComdat(Operation *op);
+
+  static const link::Comdat *getComdatResolution(Operation *op);
+
+  static bool selectedByComdat(Operation *op);
+
+  static void updateNoDeduplicate(Operation *op);
 
   static Visibility getVisibility(Operation *op);
 

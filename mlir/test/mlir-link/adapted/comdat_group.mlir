@@ -1,12 +1,9 @@
 // RUN: mlir-link %s -o - | FileCheck %s
 
-// comdat disappears when linking
-// XFAIL: *
-
-// CHECK: llvm.comdat_selector @linkoncecomdat any
-// CHECK: llvm.mlir.global linkonce @linkoncecomdat (2 : i32)
-// CHECK: llvm.mlir.global linkonce @linkoncecomdat_unref_var (2 : i32) comdat(@__llvm_global_comdat::@linkoncecomdat)
-// CHECK: llvm.func linkonce @linkoncecomdat_unref_func() comdat(@__llvm_global_comdat::@linkoncecomdat) {
+// CHECK-DAG: llvm.comdat_selector @linkoncecomdat any
+// CHECK-DAG: llvm.mlir.global linkonce @linkoncecomdat(2 : i32)
+// CHECK-DAG: llvm.mlir.global linkonce @linkoncecomdat_unref_var(2 : i32) comdat(@__llvm_global_comdat::@linkoncecomdat)
+// CHECK-DAG: llvm.func linkonce @linkoncecomdat_unref_func() comdat(@__llvm_global_comdat::@linkoncecomdat) {
 
 module {
   llvm.comdat @__llvm_global_comdat {

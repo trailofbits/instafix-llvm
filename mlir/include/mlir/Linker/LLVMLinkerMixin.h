@@ -139,9 +139,17 @@ static UnnamedAddr getMinUnnamedAddr(UnnamedAddr lhs, UnnamedAddr rhs) {
 
 using ComdatKind = LLVM::comdat::Comdat;
 
-struct ComdatSelector {
-  StringRef name;
+struct Comdat {
   ComdatKind kind;
+  Operation *selectorOp;
+  llvm::SmallPtrSet<Operation *, 2> users;
+};
+
+enum class ComdatResolution {
+  LinkFromSrc,
+  LinkFromDst,
+  LinkFromBoth,
+  Failure,
 };
 
 //===----------------------------------------------------------------------===//
@@ -175,6 +183,20 @@ public:
 
     if (derived.isComdat(pair.src))
       return true;
+
+    // Thrown away symbol can affect the visibility
+    if (pair.dst) {
+      Visibility srcVisibility = derived.getVisibility(pair.src);
+      Visibility dstVisibility = derived.getVisibility(pair.dst);
+      Visibility visibility = getMinVisibility(srcVisibility, dstVisibility);
+
+      derived.setVisibility(pair.src, visibility);
+      derived.setVisibility(pair.dst, visibility);
+    }
+    if (derived.hasComdat(pair.src)) {
+      // operations with COMDAT are selected as a group
+      return derived.selectedByComdat(pair.src);
+    }
 
     Linkage srcLinkage = derived.getLinkage(pair.src);
 
@@ -221,6 +243,10 @@ public:
     auto linkError = [&](const Twine &error) -> LogicalResult {
       return pair.src->emitError(error) << " dst: " << pair.dst->getLoc();
     };
+
+    if (derived.isComdat(pair.src) != derived.isComdat(pair.dst)) {
+      return linkError("Linking ComdatOp with non-comdat op");
+    }
 
     Linkage srcLinkage = derived.getLinkage(pair.src);
     Linkage dstLinkage = derived.getLinkage(pair.dst);
@@ -349,6 +375,11 @@ public:
     if (isWeakForLinker(srcLinkage)) {
       assert(!isExternalWeakLinkage(dstLinkage));
       assert(!isAvailableExternallyLinkage(dstLinkage));
+      const Comdat *comdat = derived.getComdatResolution(pair.src);
+      if (comdat && comdat->kind == ComdatKind::NoDeduplicate) {
+        derived.updateNoDeduplicate(pair.src);
+        return ConflictResolution::LinkFromBothAndRenameSrc;
+      }
       if (isLinkOnceLinkage(dstLinkage) && isWeakLinkage(srcLinkage)) {
         return ConflictResolution::LinkFromSrc;
       }
@@ -358,38 +389,12 @@ public:
 
     if (isWeakForLinker(dstLinkage)) {
       assert(isExternalLinkage(srcLinkage));
+      const Comdat *comdat = derived.getComdatResolution(pair.dst);
+      if (comdat && comdat->kind == ComdatKind::NoDeduplicate) {
+        derived.updateNoDeduplicate(pair.dst);
+        return ConflictResolution::LinkFromBothAndRenameDst;
+      }
       return ConflictResolution::LinkFromSrc;
-    }
-
-    std::optional<ComdatSelector> srcComdatSel =
-        derived.getComdatSelector(pair.src);
-    std::optional<ComdatSelector> dstComdatSel =
-        derived.getComdatSelector(pair.dst);
-    if (srcComdatSel.has_value() && dstComdatSel.has_value()) {
-      auto srcComdatName = srcComdatSel->name;
-      auto dstComdatName = dstComdatSel->name;
-      auto srcComdat = srcComdatSel->kind;
-      auto dstComdat = dstComdatSel->kind;
-      if (srcComdatName != dstComdatName) {
-        llvm_unreachable("Comdat selector names don't match");
-      }
-      if (srcComdat != dstComdat) {
-        llvm_unreachable("Comdat selector kinds don't match");
-      }
-
-      if (srcComdat == mlir::LLVM::comdat::Comdat::Any) {
-        return ConflictResolution::LinkFromDst;
-      }
-      if (srcComdat == mlir::LLVM::comdat::Comdat::NoDeduplicate) {
-        return ConflictResolution::Failure;
-      }
-      if (srcComdat == mlir::LLVM::comdat::Comdat::ExactMatch) {
-        return ConflictResolution::LinkFromDst;
-      }
-      if (srcComdat == mlir::LLVM::comdat::Comdat::SameSize) {
-        return ConflictResolution::LinkFromDst;
-      }
-      llvm_unreachable("unimplemented comdat kind");
     }
 
     // If we reach here, we have two external definitions that can't be resolved
