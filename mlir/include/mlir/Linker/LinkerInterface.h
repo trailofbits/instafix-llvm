@@ -60,6 +60,8 @@ public:
     return builder.create<Op>(location, std::forward<Args>(args)...);
   }
 
+  OpBuilder &getBuilder() { return builder; };
+
 private:
   // Private constructor used by nest()
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
@@ -145,7 +147,8 @@ public:
 
   /// Perform tasks that need to be computed on whole-module basis before actual summary.
   /// E.g. Pre-compute COMDAT resolution before actually linking the modules.
-  virtual LogicalResult moduleOpSummary(ModuleOp module) {
+  virtual LogicalResult moduleOpSummary(ModuleOp module,
+                                        SymbolTableCollection &collection) {
     return success();
   }
 
@@ -282,9 +285,10 @@ public:
     return Conflict::noConflict(src);
   }
 
-  LogicalResult moduleOpSummary(ModuleOp src) {
+  LogicalResult moduleOpSummary(ModuleOp src,
+                                SymbolTableCollection &collection) {
     for (SymbolLinkerInterface *linker : interfaces) {
-      if (failed(linker->moduleOpSummary(src)))
+      if (failed(linker->moduleOpSummary(src, collection)))
         return failure();
     }
     return success();
