@@ -18,6 +18,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Threading.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Error.h"
 #include <memory>
@@ -147,6 +148,12 @@ public:
   /// Materialize new operation for the given conflict src operation.
   virtual Operation *materialize(Operation *src, LinkState &state) {
     return state.clone(src);
+  }
+
+  /// Perform tasks that need to be computed on whole-module basis before actual summary.
+  /// E.g. Pre-compute COMDAT resolution before actually linking the modules.
+  virtual LogicalResult moduleOpSummary(ModuleOp module) {
+    return success();
   }
 
   /// Dependencies of the given operation required to be linked.
@@ -284,6 +291,13 @@ public:
         return pair;
     }
     return Conflict::noConflict(src);
+  }
+
+  LogicalResult moduleOpSummary(ModuleOp src) {
+    return failableParallelForEach(src.getContext(), interfaces,
+                                   [src](SymbolLinkerInterface *linker) {
+      return linker->moduleOpSummary(src);
+    });
   }
 
 private:
