@@ -36,8 +36,11 @@ public:
 
   LogicalResult summarize(ModuleOp src, unsigned flags) override {
     WalkResult result = src.walk([&](Operation *op) {
-      if (op == src)
+      if (op == src) {
+        if (symbolLinkers.moduleOpSummary(src).failed())
+            return WalkResult::interrupt();
         return WalkResult::advance();
+      }
 
       if (summarize(op, flags, /*forDependency=*/false).failed())
         return WalkResult::interrupt();

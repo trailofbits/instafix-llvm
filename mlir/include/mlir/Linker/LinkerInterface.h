@@ -143,6 +143,12 @@ public:
     return state.clone(src);
   }
 
+  /// Perform tasks that need to be computed on whole-module basis before actual summary.
+  /// E.g. Pre-compute COMDAT resolution before actually linking the modules.
+  virtual LogicalResult moduleOpSummary(ModuleOp module) {
+    return success();
+  }
+
   /// Dependencies of the given operation required to be linked.
   virtual SmallVector<Operation *>
   dependencies(Operation *op, SymbolTableCollection &collection) const = 0;
@@ -274,6 +280,14 @@ public:
         return pair;
     }
     return Conflict::noConflict(src);
+  }
+
+  LogicalResult moduleOpSummary(ModuleOp src) {
+    for (SymbolLinkerInterface *linker : interfaces) {
+      if (failed(linker->moduleOpSummary(src)))
+        return failure();
+    }
+    return success();
   }
 
 private:
