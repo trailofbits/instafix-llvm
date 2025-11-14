@@ -434,7 +434,8 @@ public:
   }
 
   LogicalResult resolveConflict(Conflict pair,
-                                ConflictResolution resolution) override {
+                                ConflictResolution resolution,
+                                SymbolTableCollection &collection) override {
     auto &derived = LinkerMixin::getDerived();
     if (resolution == ConflictResolution::LinkFromSrc &&
         isAppendingLinkage(derived.getLinkage(pair.src))) {
@@ -445,7 +446,7 @@ public:
         toAppend.push_back(pair.src);
       }
     }
-    return SymbolAttrLinkerInterface::resolveConflict(pair, resolution);
+    return SymbolAttrLinkerInterface::resolveConflict(pair, resolution, collection);
   }
 
 protected:

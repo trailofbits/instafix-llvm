@@ -36,9 +36,9 @@ enum LinkerFlags {
 
 class LinkState {
 public:
-  LinkState(ModuleOp dst)
+  LinkState(ModuleOp dst, mlir::SymbolTableCollection &symbolTableCollection)
       : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()),
-        symbolTableCollection(), moduleMaps() {}
+        symbolTableCollection(symbolTableCollection), moduleMaps() {}
 
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
@@ -62,13 +62,14 @@ public:
 
 private:
   // Private constructor used by nest()
-  LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping)
+  LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping,
+            SymbolTableCollection &symbolTableCollection)
       : mapping(std::move(mapping)), builder(dst.getBodyRegion()),
-        symbolTableCollection(), moduleMaps() {}
+        symbolTableCollection(symbolTableCollection), moduleMaps() {}
 
   std::shared_ptr<IRMapping> mapping;
   OpBuilder builder;
-  SymbolTableCollection symbolTableCollection;
+  SymbolTableCollection &symbolTableCollection;
   DenseMap<ModuleOp, SymbolUserMap> moduleMaps;
 };
 
@@ -106,7 +107,7 @@ public:
   using LinkerInterface::LinkerInterface;
 
   /// TODO comment
-  virtual LogicalResult summarize(ModuleOp src, unsigned flags) = 0;
+  virtual LogicalResult summarize(ModuleOp src, unsigned flags, SymbolTableCollection &collection) = 0;
 
   /// TODO comment
   virtual OwningOpRef<ModuleOp> createCompositeModule(ModuleOp src) = 0;
@@ -130,13 +131,13 @@ public:
   virtual bool isLinkNeeded(Conflict pair, bool forDependency) const = 0;
 
   /// Checks if an operation conflicts with existing linked operations.
-  virtual Conflict findConflict(Operation *src) const = 0;
+  virtual Conflict findConflict(Operation *src, SymbolTableCollection &collection) const = 0;
 
   /// Resolves a conflict between an existing operation and a new one.
-  virtual LogicalResult resolveConflict(Conflict pair) = 0;
+  virtual LogicalResult resolveConflict(Conflict pair, SymbolTableCollection &collection) = 0;
 
   /// Records a non-conflicting operation for linking.
-  virtual void registerForLink(Operation *op) = 0;
+  virtual void registerForLink(Operation *op, SymbolTableCollection &collection) = 0;
 
   /// Materialize new operation for the given conflict src operation.
   virtual Operation *materialize(Operation *src, LinkState &state) const {
@@ -183,16 +184,17 @@ public:
   StringRef getSymbol(Operation *op) const override;
 
   /// Checks if an operation conflicts with existing linked operations.
-  Conflict findConflict(Operation *src) const override;
+  Conflict findConflict(Operation *src, SymbolTableCollection &collection) const override;
 
   /// Records a non-conflicting operation for linking.
-  void registerForLink(Operation *op) override;
+  void registerForLink(Operation *op, SymbolTableCollection &collection) override;
 
   /// Resolves a conflict between an existing operation and a new one.
-  LogicalResult resolveConflict(Conflict pair) override;
+  LogicalResult resolveConflict(Conflict pair, SymbolTableCollection &collection) override;
 
   virtual LogicalResult resolveConflict(Conflict pair,
-                                        ConflictResolution resolution);
+                                        ConflictResolution resolution,
+                                        SymbolTableCollection &collection);
 
   /// Gets the conflict resolution for a given conflict
   virtual ConflictResolution getConflictResolution(Conflict pair) const = 0;
@@ -268,9 +270,9 @@ public:
     return success();
   }
 
-  Conflict findConflict(Operation *src) const {
+  Conflict findConflict(Operation *src, SymbolTableCollection &collection) const {
     for (SymbolLinkerInterface *linker : interfaces) {
-      if (auto pair = linker->findConflict(src); pair.hasConflict())
+      if (auto pair = linker->findConflict(src, collection); pair.hasConflict())
         return pair;
     }
     return Conflict::noConflict(src);

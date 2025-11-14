@@ -260,7 +260,8 @@ LogicalResult mlir::MlirLinkMain(int argc, char **argv,
   MLIRContext context(registry);
   context.allowUnregisteredDialects(options.shouldAllowUnregisteredDialects());
 
-  Linker linker(&context, options);
+  mlir::SymbolTableCollection symbolTableCollection;
+  Linker linker(&context, symbolTableCollection, options);
 
   // Prepare output file
   std::string errorMessage;

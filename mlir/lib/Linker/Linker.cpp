@@ -77,12 +77,12 @@ LogicalResult Linker::summarize(ModuleOp src, unsigned flags) {
   ModuleLinkerInterface *iface = getModuleLinkerInterface(src);
   if (!iface)
     return emitError("Module does not have a linker interface");
-  return iface->summarize(src, flags);
+  return iface->summarize(src, flags, collection);
 }
 
 OwningOpRef<ModuleOp> Linker::link(bool sortSymbols) {
   ModuleOp mod = composite.get();
-  LinkState state(mod);
+  LinkState state(mod, collection);
 
   if (failed(getModuleLinkerInterface(mod)->link(state)))
     return nullptr;
