@@ -56,8 +56,8 @@ protected:
 /// after the linking.
 class Linker {
 public:
-  Linker(MLIRContext *context, const LinkerOptions &options = {})
-      : context(context), options(options) {}
+  Linker(MLIRContext *context, SymbolTableCollection &collection, const LinkerOptions &options = {})
+      : context(context), collection(collection), options(options) {}
 
   LogicalResult addModule(OwningOpRef<ModuleOp> src);
 
@@ -90,6 +90,8 @@ private:
 
   /// The context used for the linker
   MLIRContext *context;
+
+  SymbolTableCollection &collection;
 
   /// The options controlling the linker behavior
   LinkerOptions options;

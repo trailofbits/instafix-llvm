@@ -34,12 +34,13 @@ public:
     return symbolLinkers.finalize(dst);
   }
 
-  LogicalResult summarize(ModuleOp src, unsigned flags) override {
+  LogicalResult summarize(ModuleOp src, unsigned flags,
+                          SymbolTableCollection &collection) override {
     WalkResult result = src.walk([&](Operation *op) {
       if (op == src)
         return WalkResult::advance();
 
-      if (summarize(op, flags, /*forDependency=*/false).failed())
+      if (summarize(op, flags, /*forDependency=*/false, collection).failed())
         return WalkResult::interrupt();
       return WalkResult::advance();
     });
@@ -47,7 +48,8 @@ public:
     return failure(result.wasInterrupted());
   }
 
-  LogicalResult summarize(Operation *op, unsigned flags, bool forDependency) {
+  LogicalResult summarize(Operation *op, unsigned flags, bool forDependency,
+                          SymbolTableCollection &collection) {
     auto linker = dyn_cast<SymbolLinkerInterface>(op->getDialect());
     if (!linker)
       return success();
@@ -57,19 +59,19 @@ public:
     if (!linker->canBeLinked(op))
       return success();
 
-    Conflict conflict = linker->findConflict(op);
+    Conflict conflict = linker->findConflict(op, collection);
     if (!linker->isLinkNeeded(conflict, forDependency))
       return success();
 
     if (conflict.hasConflict()) {
-      if (linker->resolveConflict(conflict).failed())
+      if (linker->resolveConflict(conflict, collection).failed())
         return failure();
     } else {
-      linker->registerForLink(op);
+      linker->registerForLink(op, collection);
     }
 
     for (Operation *dep : linker->dependencies(op, symbolTableCollection)) {
-      if (summarize(dep, flags, /*forDependency=*/true).failed())
+      if (summarize(dep, flags, /*forDependency=*/true, collection).failed())
         return failure();
     }
 

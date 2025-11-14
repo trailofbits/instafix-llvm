@@ -50,7 +50,7 @@ LinkState LinkState::nest(ModuleOp submod) const {
   assert(submod->getParentOfType<mlir::ModuleOp>().getOperation() ==
              getDestinationOp() &&
          "Submodule should be directly nested in the current state");
-  return LinkState(submod, mapping);
+  return LinkState(submod, mapping, symbolTableCollection);
 }
 
 IRMapping &LinkState::getMapping() { return *mapping; }
@@ -105,7 +105,8 @@ StringRef SymbolAttrLinkerInterface::getSymbol(Operation *op) const {
   return symbolAttr(op).getValue();
 }
 
-Conflict SymbolAttrLinkerInterface::findConflict(Operation *src) const {
+Conflict SymbolAttrLinkerInterface::findConflict(Operation *src,
+                                                 SymbolTableCollection &collection) const {
   assert(canBeLinked(src) && "expected linkable operation");
   StringRef symbol = getSymbol(src);
   auto it = summary.find(symbol);
@@ -114,7 +115,8 @@ Conflict SymbolAttrLinkerInterface::findConflict(Operation *src) const {
   return {it->second, src};
 }
 
-void SymbolAttrLinkerInterface::registerForLink(Operation *op) {
+void SymbolAttrLinkerInterface::registerForLink(Operation *op,
+                                                SymbolTableCollection &collection) {
   assert(canBeLinked(op) && "expected linkable operation");
   summary[getSymbol(op)] = op;
 }
@@ -183,17 +185,18 @@ SmallVector<Operation *> SymbolAttrLinkerInterface::dependencies(
 
 LogicalResult
 SymbolAttrLinkerInterface::resolveConflict(Conflict pair,
-                                           ConflictResolution resolution) {
+                                           ConflictResolution resolution,
+                                           SymbolTableCollection &collection) {
 
   switch (resolution) {
   case ConflictResolution::LinkFromSrc:
-    registerForLink(pair.src);
+    registerForLink(pair.src, collection);
     return success();
   case ConflictResolution::LinkFromDst:
     return success();
   case ConflictResolution::LinkFromBothAndRenameDst:
     uniqued.insert(pair.dst);
-    registerForLink(pair.src);
+    registerForLink(pair.src, collection);
     return success();
   case ConflictResolution::LinkFromBothAndRenameSrc:
     uniqued.insert(pair.src);
@@ -205,9 +208,9 @@ SymbolAttrLinkerInterface::resolveConflict(Conflict pair,
   llvm_unreachable("unimplemented conflict resolution");
 }
 
-LogicalResult SymbolAttrLinkerInterface::resolveConflict(Conflict pair) {
+LogicalResult SymbolAttrLinkerInterface::resolveConflict(Conflict pair, SymbolTableCollection &collection) {
   if (failed(this->verifyLinkageCompatibility(pair)))
     return failure();
   ConflictResolution resolution = this->getConflictResolution(pair);
-  return resolveConflict(pair, resolution);
+  return resolveConflict(pair, resolution, collection);
 }
