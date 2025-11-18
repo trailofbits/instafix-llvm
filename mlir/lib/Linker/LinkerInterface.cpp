@@ -8,6 +8,8 @@
 
 #include "mlir/Linker/LinkerInterface.h"
 
+#include "mlir/IR/Threading.h"
+
 #define DEBUG_TYPE "mlir-linker-interface"
 
 using namespace mlir;
@@ -27,22 +29,26 @@ Operation *cloneImpl(Operation *src, std::shared_ptr<IRMapping> &mapping,
 }
 
 Operation *LinkState::clone(Operation *src) {
+  std::lock_guard<std::mutex> lock(*mutex);
   return cloneImpl(src, mapping, [this](Operation *op) {
     return builder.clone(*op, *mapping);
   });
 }
 
 Operation *LinkState::cloneWithoutRegions(Operation *src) {
+  std::lock_guard<std::mutex> lock(*mutex);
   return cloneImpl(src, mapping, [this](Operation *op) {
     return builder.cloneWithoutRegions(*op, *mapping);
   });
 }
 
 Operation *LinkState::getDestinationOp() const {
+  std::lock_guard<std::mutex> lock(*mutex);
   return builder.getInsertionBlock()->getParentOp();
 }
 
 Operation *LinkState::remapped(Operation *src) const {
+  std::lock_guard<std::mutex> lock(*mutex);
   return mapping->lookupOrNull(src);
 }
 
@@ -50,11 +56,12 @@ LinkState LinkState::nest(ModuleOp submod) const {
   assert(submod->getParentOfType<mlir::ModuleOp>().getOperation() ==
              getDestinationOp() &&
          "Submodule should be directly nested in the current state");
-  return LinkState(submod, mapping, symbolTableCollection);
+  return LinkState(submod, mapping, mutex, symbolTableCollection);
 }
 
-IRMapping &LinkState::getMapping() { return *mapping; }
+std::pair<IRMapping &, std::mutex &> LinkState::getMapping() { return {*mapping, *mutex}; }
 SymbolUserMap &LinkState::getSymbolUserMap(ModuleOp mod) {
+  std::lock_guard<std::mutex> lock(*mutex);
   return moduleMaps.try_emplace(mod, symbolTableCollection, mod).first->second;
 }
 
@@ -109,6 +116,7 @@ Conflict SymbolAttrLinkerInterface::findConflict(Operation *src,
                                                  SymbolTableCollection &collection) const {
   assert(canBeLinked(src) && "expected linkable operation");
   StringRef symbol = getSymbol(src);
+  std::lock_guard<std::mutex> lock(summaryMutex);
   auto it = summary.find(symbol);
   if (it == summary.end())
     return Conflict::noConflict(src);
@@ -118,10 +126,11 @@ Conflict SymbolAttrLinkerInterface::findConflict(Operation *src,
 void SymbolAttrLinkerInterface::registerForLink(Operation *op,
                                                 SymbolTableCollection &collection) {
   assert(canBeLinked(op) && "expected linkable operation");
+  std::lock_guard<std::mutex> lock(summaryMutex);
   summary[getSymbol(op)] = op;
 }
 
-LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) const {
+LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) {
   SymbolTable &st =
       state.getSymbolTableCollection().getSymbolTable(state.getDestinationOp());
 
@@ -129,32 +138,71 @@ LogicalResult SymbolAttrLinkerInterface::link(LinkState &state) const {
     return op->emitError("failed to materialize symbol for linking");
   };
 
-  for (const auto &[symbol, op] : summary) {
-    Operation *materialized = materialize(op, state);
-    if (!materialized)
-      return materializeError(op);
-
-    if (isa<SymbolOpInterface>(op))
-      st.insert(materialized);
+  // Materialize symbols from summary in parallel
+  std::mutex insertMutex;
+  std::vector<std::pair<StringRef, Operation *>> summaryVec;
+  summaryVec.reserve(summary.size());
+  for (const auto &entry : summary) {
+    summaryVec.emplace_back(entry.getKey(), entry.getValue());
   }
 
+  LogicalResult result = failableParallelForEach(
+      state.getDestinationOp()->getContext(), summaryVec,
+      [&](const std::pair<StringRef, Operation *> &pair) -> LogicalResult {
+        Operation *op = pair.second;
+        Operation *materialized = materialize(op, state);
+        if (!materialized)
+          return materializeError(op);
+
+        if (isa<SymbolOpInterface>(op)) {
+          std::lock_guard<std::mutex> lock(insertMutex);
+          st.insert(materialized);
+        }
+        return success();
+      });
+
+  if (failed(result))
+    return failure();
+
+  // Materialize uniqued symbols in parallel
   std::vector<std::pair<Operation *, StringAttr>> toRenameUsers;
+  std::mutex renameMutex;
 
-  for (Operation *op : uniqued) {
-    Operation *materialized = materialize(op, state);
-    if (!materialized)
-      return materializeError(op);
+  SmallVector<Operation *> uniquedVec(uniqued.begin(), uniqued.end());
 
-    StringAttr name = symbolAttr(materialized);
-    if (st.lookup(name)) {
-      StringAttr newName = getUniqueNameIn(st, name);
-      st.setSymbolName(materialized, newName);
-      toRenameUsers.emplace_back(op, newName);
-    }
+  result = failableParallelForEach(
+      state.getDestinationOp()->getContext(), uniquedVec,
+      [&](Operation *op) -> LogicalResult {
+        Operation *materialized = materialize(op, state);
+        if (!materialized)
+          return materializeError(op);
 
-    st.insert(materialized);
-  }
+        StringAttr name = symbolAttr(materialized);
+        StringAttr newName = name;
+        bool needsRename = false;
 
+        {
+          std::lock_guard<std::mutex> lock(insertMutex);
+          if (st.lookup(name)) {
+            newName = getUniqueNameIn(st, name);
+            st.setSymbolName(materialized, newName);
+            needsRename = true;
+          }
+          st.insert(materialized);
+        }
+
+        if (needsRename) {
+          std::lock_guard<std::mutex> lock(renameMutex);
+          toRenameUsers.emplace_back(op, newName);
+        }
+
+        return success();
+      });
+
+  if (failed(result))
+    return failure();
+
+  // Rename users (sequential, but typically small)
   for (auto &[op, newName] : toRenameUsers) {
     if (failed(renameRemappedUsersOf(op, newName, state)))
       return failure();
@@ -195,11 +243,17 @@ SymbolAttrLinkerInterface::resolveConflict(Conflict pair,
   case ConflictResolution::LinkFromDst:
     return success();
   case ConflictResolution::LinkFromBothAndRenameDst:
-    uniqued.insert(pair.dst);
+    {
+      std::lock_guard<std::mutex> lock(summaryMutex);
+      uniqued.insert(pair.dst);
+    }
     registerForLink(pair.src, collection);
     return success();
   case ConflictResolution::LinkFromBothAndRenameSrc:
-    uniqued.insert(pair.src);
+    {
+      std::lock_guard<std::mutex> lock(summaryMutex);
+      uniqued.insert(pair.src);
+    }
     return success();
   case ConflictResolution::Failure:
     return pair.src->emitError("Linker error");

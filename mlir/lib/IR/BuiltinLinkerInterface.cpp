@@ -12,6 +12,7 @@
 
 #include "mlir/IR/BuiltinLinkerInterface.h"
 #include "mlir/IR/BuiltinDialect.h"
+#include "mlir/IR/Threading.h"
 #include "mlir/Linker/LinkerInterface.h"
 
 using namespace mlir;
@@ -36,16 +37,18 @@ public:
 
   LogicalResult summarize(ModuleOp src, unsigned flags,
                           SymbolTableCollection &collection) override {
-    WalkResult result = src.walk([&](Operation *op) {
-      if (op == src)
-        return WalkResult::advance();
-
-      if (summarize(op, flags, /*forDependency=*/false, collection).failed())
-        return WalkResult::interrupt();
-      return WalkResult::advance();
+    // Collect all operations to process in parallel
+    SmallVector<Operation *> ops;
+    src.walk([&](Operation *op) {
+      if (op != src)
+        ops.push_back(op);
     });
 
-    return failure(result.wasInterrupted());
+    // Process operations in parallel
+    return failableParallelForEach(
+        src.getContext(), ops, [&](Operation *op) {
+          return summarize(op, flags, /*forDependency=*/false, collection);
+        });
   }
 
   LogicalResult summarize(Operation *op, unsigned flags, bool forDependency,
@@ -70,15 +73,15 @@ public:
       linker->registerForLink(op, collection);
     }
 
-    for (Operation *dep : linker->dependencies(op, symbolTableCollection)) {
-      if (summarize(dep, flags, /*forDependency=*/true, collection).failed())
-        return failure();
-    }
+    SmallVector<Operation *> deps = linker->dependencies(op, symbolTableCollection);
+    auto res = failableParallelForEach(getContext(), deps, [&](Operation *dep) {
+      return summarize(dep, flags, /*forDependency=*/true, collection);
+    });
 
-    return success();
+    return res;
   }
 
-  LogicalResult link(LinkState &state) const override {
+  LogicalResult link(LinkState &state) override {
     return symbolLinkers.link(state);
   }
 

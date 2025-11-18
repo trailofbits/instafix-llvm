@@ -155,6 +155,10 @@ protected:
     return static_cast<const DerivedLinkerInterface &>(*this);
   }
 
+  DerivedLinkerInterface &getDerived() {
+    return static_cast<DerivedLinkerInterface &>(*this);
+  }
+
 public:
   bool isDeclarationForLinker(Operation *op) const {
     const DerivedLinkerInterface &derived = getDerived();

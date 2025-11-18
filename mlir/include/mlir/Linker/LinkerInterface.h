@@ -21,6 +21,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Error.h"
 #include <memory>
+#include <mutex>
 
 namespace mlir::link {
 
@@ -37,8 +38,9 @@ enum LinkerFlags {
 class LinkState {
 public:
   LinkState(ModuleOp dst, mlir::SymbolTableCollection &symbolTableCollection)
-      : mapping(std::make_shared<IRMapping>()), builder(dst.getBodyRegion()),
-        symbolTableCollection(symbolTableCollection), moduleMaps() {}
+      : mapping(std::make_shared<IRMapping>()), mutex(std::make_shared<std::mutex>()),
+        builder(dst.getBodyRegion()), symbolTableCollection(symbolTableCollection),
+        moduleMaps() {}
 
   Operation *clone(Operation *src);
   Operation *cloneWithoutRegions(Operation *src);
@@ -49,7 +51,7 @@ public:
 
   LinkState nest(ModuleOp submod) const;
 
-  IRMapping &getMapping();
+  std::pair<IRMapping &, std::mutex &> getMapping();
   SymbolTableCollection &getSymbolTableCollection() {
     return symbolTableCollection;
   }
@@ -63,11 +65,14 @@ public:
 private:
   // Private constructor used by nest()
   LinkState(ModuleOp dst, std::shared_ptr<IRMapping> mapping,
+            std::shared_ptr<std::mutex> mutex,
             SymbolTableCollection &symbolTableCollection)
-      : mapping(std::move(mapping)), builder(dst.getBodyRegion()),
+      : mapping(std::move(mapping)), mutex(std::move(mutex)),
+        builder(dst.getBodyRegion()),
         symbolTableCollection(symbolTableCollection), moduleMaps() {}
 
   std::shared_ptr<IRMapping> mapping;
+  std::shared_ptr<std::mutex> mutex;
   OpBuilder builder;
   SymbolTableCollection &symbolTableCollection;
   DenseMap<ModuleOp, SymbolUserMap> moduleMaps;
@@ -95,7 +100,7 @@ public:
   virtual LogicalResult finalize(ModuleOp dst) const { return success(); }
 
   /// Link operations from current summary using state builder
-  virtual LogicalResult link(LinkState &state) const = 0;
+  virtual LogicalResult link(LinkState &state) = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -140,7 +145,7 @@ public:
   virtual void registerForLink(Operation *op, SymbolTableCollection &collection) = 0;
 
   /// Materialize new operation for the given conflict src operation.
-  virtual Operation *materialize(Operation *src, LinkState &state) const {
+  virtual Operation *materialize(Operation *src, LinkState &state) {
     return state.clone(src);
   }
 
@@ -178,7 +183,7 @@ public:
   using SymbolLinkerInterface::SymbolLinkerInterface;
 
   /// Link operations from current summary using state builder
-  LogicalResult link(LinkState &state) const override;
+  LogicalResult link(LinkState &state) override;
 
   /// Returns the symbol for the given operation.
   StringRef getSymbol(Operation *op) const override;
@@ -211,6 +216,9 @@ protected:
 
   // Operations that are to be linked with unique names.
   SetVector<Operation *> uniqued;
+
+  // Mutex to protect summary and uniqued during parallel summarization.
+  mutable std::mutex summaryMutex;
 };
 
 //===----------------------------------------------------------------------===//
