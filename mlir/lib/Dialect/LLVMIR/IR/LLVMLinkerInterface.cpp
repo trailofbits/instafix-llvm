@@ -246,8 +246,8 @@ StringRef LLVM::LLVMSymbolLinkerInterface::getSymbol(Operation *op) const {
 
 Operation *
 LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
-                                             LinkState &state) const {
-  auto derived = LinkerMixin::getDerived();
+                                             LinkState &state) {
+  auto &derived = LinkerMixin::getDerived();
   // empty append means that we either have single module or that something went
   // wrong
   if (isAppendingLinkage(derived.getLinkage(src)) && !append.empty()) {
@@ -427,7 +427,7 @@ getAppendedOpWithInitRegion(llvm::ArrayRef<mlir::Operation *> globs,
   auto elemType = originalType.getElementType();
   size_t elemCount = 0;
 
-  IRMapping &mapping = state.getMapping();
+  auto [mapping, mutex] = state.getMapping();
   auto builder = OpBuilder(targetRegion);
   std::vector<Value> values;
   std::vector<std::vector<int64_t>> positions;
@@ -442,8 +442,12 @@ getAppendedOpWithInitRegion(llvm::ArrayRef<mlir::Operation *> globs,
       if (isa<LLVM::UndefOp, LLVM::ReturnOp, LLVM::InsertValueOp>(op))
         continue;
 
-      Operation *cloned = builder.clone(op, mapping);
-      mapping.map(&op, cloned);
+      Operation *cloned;
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        cloned = builder.clone(op, mapping);
+        mapping.map(&op, cloned);
+      }
       // LLVM dialect does not have multiple result operations
       // zero result operation should not appear in this context
       // unless its a return which we skip

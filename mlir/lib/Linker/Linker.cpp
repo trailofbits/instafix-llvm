@@ -53,21 +53,26 @@ LogicalResult Linker::addModule(OwningOpRef<ModuleOp> src, bool onlyNeeded) {
 }
 
 LogicalResult Linker::addModule(OwningOpRef<ModuleOp> src, unsigned flags) {
-  ModuleOp mod = [&] {
+  ModuleOp mod;
+
+  {
+    std::lock_guard<std::mutex> lock(linkerMutex);
+
     if (options.shouldKeepModulesAlive()) {
       modules.push_back(std::move(src));
-      return modules.back().get();
+      mod = modules.back().get();
+    } else {
+      mod = src.get();
     }
-    return src.get();
-  }();
 
-  // If this is the first module, setup the linker based on it
-  if (!composite) {
-    if (failed(initializeLinker(mod)))
-      return failure();
+    // If this is the first module, setup the linker based on it
+    if (!composite) {
+      if (failed(initializeLinker(mod)))
+        return failure();
 
-    // We always override from source for the first module.
-    flags &= LinkerFlags::OverrideFromSrc;
+      // We always override from source for the first module.
+      flags &= LinkerFlags::OverrideFromSrc;
+    }
   }
 
   return summarize(mod, flags);

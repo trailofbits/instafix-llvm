@@ -12,6 +12,7 @@
 #include "mlir/IR/BuiltinOps.h"
 
 #include "mlir/Linker/LinkerInterface.h"
+#include <mutex>
 namespace mlir::link {
 
 /// These are gathered alphabetically sorted linker options
@@ -101,6 +102,9 @@ private:
 
   /// Modules registry used if `keepModulesAlive` is true
   std::vector<OwningOpRef<ModuleOp>> modules;
+
+  /// Mutex to protect modules vector and initialization during parallel addModule calls
+  std::mutex linkerMutex;
 };
 
 } // namespace mlir::link
