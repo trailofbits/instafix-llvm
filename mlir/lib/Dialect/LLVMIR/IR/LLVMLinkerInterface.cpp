@@ -247,25 +247,45 @@ StringRef LLVM::LLVMSymbolLinkerInterface::getSymbol(Operation *op) const {
 ConflictResolution
 LLVM::LLVMSymbolLinkerInterface::getConflictResolution(Conflict pair) const {
   // Check for type mismatches between functions or globals with the same name.
-  // If types don't match and BOTH are definitions, they are effectively
-  // different symbols and both should be linked, with the source renamed to
-  // avoid name collision.
   //
-  // However, if one is a declaration and the other is a definition, we should
-  // NOT rename - the declaration should be resolved to the definition even if
-  // types differ (e.g., opaque ptr vs full struct type for typeinfo symbols).
+  // For FUNCTIONS: Different function types (e.g., different arg counts) means
+  // these are genuinely different symbols that happen to share a name (common
+  // with internal/static functions in C). Both should be kept, with the
+  // internal one renamed. This applies even when one is a declaration, because
+  // function types fully describe the calling convention - a 3-arg declaration
+  // cannot be satisfied by a 4-arg definition.
+  //
+  // Exception: A varargs declaration `func @foo(...) -> i32` can match any
+  // concrete signature, so we should not rename in that case.
   if (auto srcFn = dyn_cast<LLVM::LLVMFuncOp>(pair.src)) {
     if (auto dstFn = dyn_cast<LLVM::LLVMFuncOp>(pair.dst)) {
-      bool srcIsDecl = srcFn.getBody().empty();
-      bool dstIsDecl = dstFn.getBody().empty();
-      if (srcFn.getFunctionType() != dstFn.getFunctionType() &&
-          !srcIsDecl && !dstIsDecl) {
-        // Type mismatch between two definitions - link both, rename source
+      if (srcFn.getFunctionType() != dstFn.getFunctionType()) {
+        // If either function is varargs with no fixed params, it can match
+        // any signature - don't treat as a type mismatch.
+        bool srcIsVarargsOnly = srcFn.isVarArg() &&
+                                srcFn.getFunctionType().getNumParams() == 0;
+        bool dstIsVarargsOnly = dstFn.isVarArg() &&
+                                dstFn.getFunctionType().getNumParams() == 0;
+        if (srcIsVarargsOnly || dstIsVarargsOnly) {
+          // Let base class handle varargs matching
+          return LinkerMixin::getConflictResolution(pair);
+        }
+        // Type mismatch - these are different functions with the same name.
+        // Keep both, renaming based on linkage (prefer renaming internal).
+        if (isLocalLinkage(srcFn.getLinkage()))
+          return ConflictResolution::LinkFromBothAndRenameSrc;
+        if (isLocalLinkage(dstFn.getLinkage()))
+          return ConflictResolution::LinkFromBothAndRenameDst;
+        // Both external with different types - still keep both
         return ConflictResolution::LinkFromBothAndRenameSrc;
       }
     }
   }
 
+  // For GLOBALS: Unlike functions, a declaration might use an opaque ptr type
+  // while the definition has the full struct type (e.g., C++ typeinfo symbols).
+  // These can still be the same symbol, so we only rename when BOTH are
+  // definitions with different types.
   if (auto srcGV = dyn_cast<LLVM::GlobalOp>(pair.src)) {
     if (auto dstGV = dyn_cast<LLVM::GlobalOp>(pair.dst)) {
       bool srcIsDecl = srcGV.getInitializerRegion().empty() && !srcGV.getValue();
