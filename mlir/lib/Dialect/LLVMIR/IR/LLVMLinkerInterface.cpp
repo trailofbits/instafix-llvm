@@ -270,7 +270,12 @@ LLVM::LLVMSymbolLinkerInterface::getConflictResolution(Conflict pair) const {
     if (auto dstGV = dyn_cast<LLVM::GlobalOp>(pair.dst)) {
       bool srcIsDecl = srcGV.getInitializerRegion().empty() && !srcGV.getValue();
       bool dstIsDecl = dstGV.getInitializerRegion().empty() && !dstGV.getValue();
-      if (srcGV.getType() != dstGV.getType() && !srcIsDecl && !dstIsDecl) {
+      // For common linkage, different sizes are allowed - the larger one wins.
+      // Let the base class handle this case via getBitWidth comparison.
+      bool bothCommon = srcGV.getLinkage() == Linkage::Common &&
+                        dstGV.getLinkage() == Linkage::Common;
+      if (srcGV.getType() != dstGV.getType() && !srcIsDecl && !dstIsDecl &&
+          !bothCommon) {
         // Type mismatch between two definitions - link both, rename source
         return ConflictResolution::LinkFromBothAndRenameSrc;
       }
