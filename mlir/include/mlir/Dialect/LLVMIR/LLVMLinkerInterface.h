@@ -29,6 +29,7 @@ public:
   static llvm::StringRef getSection(Operation *op);
   static uint32_t getAddressSpace(Operation *op);
   StringRef getSymbol(Operation *op) const override;
+  link::ConflictResolution getConflictResolution(link::Conflict pair) const override;
   Operation *materialize(Operation *src, link::LinkState &state) const override;
   SmallVector<Operation *>
   dependencies(Operation *op, SymbolTableCollection &collection) const override;

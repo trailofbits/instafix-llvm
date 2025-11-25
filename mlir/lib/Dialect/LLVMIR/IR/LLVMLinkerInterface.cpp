@@ -244,6 +244,43 @@ StringRef LLVM::LLVMSymbolLinkerInterface::getSymbol(Operation *op) const {
   return SymbolAttrLinkerInterface::getSymbol(op);
 }
 
+ConflictResolution
+LLVM::LLVMSymbolLinkerInterface::getConflictResolution(Conflict pair) const {
+  // Check for type mismatches between functions or globals with the same name.
+  // If types don't match and BOTH are definitions, they are effectively
+  // different symbols and both should be linked, with the source renamed to
+  // avoid name collision.
+  //
+  // However, if one is a declaration and the other is a definition, we should
+  // NOT rename - the declaration should be resolved to the definition even if
+  // types differ (e.g., opaque ptr vs full struct type for typeinfo symbols).
+  if (auto srcFn = dyn_cast<LLVM::LLVMFuncOp>(pair.src)) {
+    if (auto dstFn = dyn_cast<LLVM::LLVMFuncOp>(pair.dst)) {
+      bool srcIsDecl = srcFn.getBody().empty();
+      bool dstIsDecl = dstFn.getBody().empty();
+      if (srcFn.getFunctionType() != dstFn.getFunctionType() &&
+          !srcIsDecl && !dstIsDecl) {
+        // Type mismatch between two definitions - link both, rename source
+        return ConflictResolution::LinkFromBothAndRenameSrc;
+      }
+    }
+  }
+
+  if (auto srcGV = dyn_cast<LLVM::GlobalOp>(pair.src)) {
+    if (auto dstGV = dyn_cast<LLVM::GlobalOp>(pair.dst)) {
+      bool srcIsDecl = srcGV.getInitializerRegion().empty() && !srcGV.getValue();
+      bool dstIsDecl = dstGV.getInitializerRegion().empty() && !dstGV.getValue();
+      if (srcGV.getType() != dstGV.getType() && !srcIsDecl && !dstIsDecl) {
+        // Type mismatch between two definitions - link both, rename source
+        return ConflictResolution::LinkFromBothAndRenameSrc;
+      }
+    }
+  }
+
+  // Fall back to default LLVM linkage-based resolution
+  return LinkerMixin::getConflictResolution(pair);
+}
+
 Operation *
 LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
                                              LinkState &state) const {
