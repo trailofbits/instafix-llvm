@@ -244,6 +244,26 @@ StringRef LLVM::LLVMSymbolLinkerInterface::getSymbol(Operation *op) const {
   return SymbolAttrLinkerInterface::getSymbol(op);
 }
 
+bool LLVM::LLVMSymbolLinkerInterface::isLinkNeeded(Conflict pair,
+                                                   bool forDependency) const {
+  // For external function declarations with different types, we need to link
+  // so that conflict resolution can pick the "better" type (e.g., i32 over i8).
+  // Without this, declarations are filtered out before conflict resolution.
+  if (pair.dst) {
+    if (auto srcFn = dyn_cast<LLVM::LLVMFuncOp>(pair.src)) {
+      if (auto dstFn = dyn_cast<LLVM::LLVMFuncOp>(pair.dst)) {
+        if (srcFn.isExternal() && dstFn.isExternal() &&
+            srcFn.getFunctionType() != dstFn.getFunctionType()) {
+          // Type mismatch between external declarations - need to resolve
+          return true;
+        }
+      }
+    }
+  }
+  // Fall back to default behavior
+  return LinkerMixin::isLinkNeeded(pair, forDependency);
+}
+
 ConflictResolution
 LLVM::LLVMSymbolLinkerInterface::getConflictResolution(Conflict pair) const {
   // Check for type mismatches between functions or globals with the same name.
@@ -270,6 +290,36 @@ LLVM::LLVMSymbolLinkerInterface::getConflictResolution(Conflict pair) const {
           // Let base class handle varargs matching
           return LinkerMixin::getConflictResolution(pair);
         }
+
+        // For two external declarations with different types, prefer the
+        // "more correct" type rather than creating duplicate symbols.
+        // This commonly happens with CMake's CheckFunctionExists which declares
+        // all functions as returning char (i8).
+        bool srcIsDecl = srcFn.isExternal();
+        bool dstIsDecl = dstFn.isExternal();
+        if (srcIsDecl && dstIsDecl) {
+          Type srcRet = srcFn.getFunctionType().getReturnType();
+          Type dstRet = dstFn.getFunctionType().getReturnType();
+
+          // If return types are both integers, prefer the larger one
+          // (e.g., i32 over i8 for getpid). Call sites expecting the smaller
+          // type will have truncation inserted in finalize().
+          if (srcRet && dstRet && srcRet.isInteger() && dstRet.isInteger()) {
+            unsigned srcWidth = srcRet.getIntOrFloatBitWidth();
+            unsigned dstWidth = dstRet.getIntOrFloatBitWidth();
+            if (srcWidth > dstWidth) {
+              return ConflictResolution::LinkFromSrc;
+            } else if (dstWidth > srcWidth) {
+              return ConflictResolution::LinkFromDst;
+            }
+          }
+          // For void vs non-void, prefer non-void
+          if (!srcRet && dstRet)
+            return ConflictResolution::LinkFromDst;
+          if (srcRet && !dstRet)
+            return ConflictResolution::LinkFromSrc;
+        }
+
         // Type mismatch - these are different functions with the same name.
         // Keep both, renaming based on linkage (prefer renaming internal).
         if (isLocalLinkage(srcFn.getLinkage()))
@@ -382,7 +432,96 @@ LogicalResult LLVM::LLVMSymbolLinkerInterface::initialize(ModuleOp src) {
   return success();
 }
 
+/// Fix call sites that reference a function with a mismatched return type.
+///
+/// This can happen when multiple translation units declare the same external
+/// function with different types (e.g., `getpid() -> i8` vs `getpid() -> i32`).
+/// During conflict resolution, we prefer the larger/more-correct type, but
+/// call sites from other TUs may still expect the smaller type.
+///
+/// This function inserts explicit truncation/extension operations to preserve
+/// the original call site semantics while using the canonical declaration.
+static LogicalResult fixCallTypeMismatches(ModuleOp dst) {
+  SymbolTableCollection symbolTableCollection;
+  SymbolTable &symbolTable = symbolTableCollection.getSymbolTable(dst);
+
+  // Collect calls that need fixing (can't modify while walking)
+  SmallVector<LLVM::CallOp> callsToFix;
+  dst.walk([&](LLVM::CallOp call) {
+    auto calleeAttr = call.getCalleeAttr();
+    if (!calleeAttr)
+      return; // Indirect call
+
+    auto *calleeOp = symbolTable.lookup(calleeAttr.getValue());
+    if (!calleeOp)
+      return; // Unresolved
+
+    auto calleeFn = dyn_cast<LLVM::LLVMFuncOp>(calleeOp);
+    if (!calleeFn)
+      return;
+
+    // Check for return type mismatch
+    Type calleeRetType = calleeFn.getFunctionType().getReturnType();
+    Type expectedRetType = call.getCalleeFunctionType().getReturnType();
+
+    if (calleeRetType != expectedRetType)
+      callsToFix.push_back(call);
+  });
+
+  // Fix each call by inserting conversions
+  for (LLVM::CallOp call : callsToFix) {
+    auto calleeFn = cast<LLVM::LLVMFuncOp>(
+        symbolTable.lookup(call.getCalleeAttr().getValue()));
+    Type calleeRetType = calleeFn.getFunctionType().getReturnType();
+    Type expectedRetType = call.getCalleeFunctionType().getReturnType();
+
+    // Only handle integer type mismatches for now
+    if (!calleeRetType || !expectedRetType ||
+        !calleeRetType.isInteger() || !expectedRetType.isInteger())
+      continue;
+
+    unsigned calleeWidth = calleeRetType.getIntOrFloatBitWidth();
+    unsigned expectedWidth = expectedRetType.getIntOrFloatBitWidth();
+
+    // Create a new call with the callee's actual return type
+    OpBuilder builder(call);
+    auto newCall = builder.create<LLVM::CallOp>(
+        call.getLoc(), calleeFn.getFunctionType().getReturnType(),
+        call.getCalleeAttr(), call.getArgOperands());
+
+    // Copy attributes from original call
+    newCall.setCConv(call.getCConv());
+    newCall.setTailCallKind(call.getTailCallKind());
+    if (call.getNoUnwind())
+      newCall.setNoUnwind(true);
+
+    // Insert conversion after the new call
+    builder.setInsertionPointAfter(newCall);
+    Value converted;
+    if (calleeWidth > expectedWidth) {
+      // Callee returns larger type than expected - truncate
+      converted = builder.create<LLVM::TruncOp>(
+          call.getLoc(), expectedRetType, newCall.getResult());
+    } else {
+      // Callee returns smaller type than expected - extend
+      // Use sign extension by default (most common for libc functions)
+      converted = builder.create<LLVM::SExtOp>(
+          call.getLoc(), expectedRetType, newCall.getResult());
+    }
+
+    // Replace all uses of the old call result with the converted value
+    call.getResult().replaceAllUsesWith(converted);
+    call.erase();
+  }
+
+  return success();
+}
+
 LogicalResult LLVM::LLVMSymbolLinkerInterface::finalize(ModuleOp dst) const {
+  // Fix call sites with type mismatches from cross-TU declaration conflicts
+  if (failed(fixCallTypeMismatches(dst)))
+    return failure();
+
   SmallVector<NamedAttribute, 2> newAttrs;
   // The names are currently hardcoded for dlti dialect
   // Nice solution would be preferable
