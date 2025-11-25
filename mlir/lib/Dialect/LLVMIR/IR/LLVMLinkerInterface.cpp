@@ -274,8 +274,12 @@ LLVM::LLVMSymbolLinkerInterface::getConflictResolution(Conflict pair) const {
       // Let the base class handle this case via getBitWidth comparison.
       bool bothCommon = srcGV.getLinkage() == Linkage::Common &&
                         dstGV.getLinkage() == Linkage::Common;
+      // For appending linkage, different array sizes are expected - they will
+      // be merged into a single array by the appending linkage handler.
+      bool bothAppending = srcGV.getLinkage() == Linkage::Appending &&
+                           dstGV.getLinkage() == Linkage::Appending;
       if (srcGV.getType() != dstGV.getType() && !srcIsDecl && !dstIsDecl &&
-          !bothCommon) {
+          !bothCommon && !bothAppending) {
         // Type mismatch between two definitions - link both, rename source
         return ConflictResolution::LinkFromBothAndRenameSrc;
       }
