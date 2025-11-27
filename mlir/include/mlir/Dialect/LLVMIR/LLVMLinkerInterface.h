@@ -36,6 +36,17 @@ public:
   LogicalResult finalize(ModuleOp dst) const override;
   Operation *appendGlobals(llvm::StringRef glob, link::LinkState &state);
 
+  LogicalResult link(link::LinkState &state) override;
+
+  link::Conflict findConflict(Operation *src,
+                              SymbolTableCollection &collection) const override;
+
+  LogicalResult verifyLinkageCompatibility(link::Conflict pair) const override;
+
+  /// Fix call sites that call functions with mismatched signatures by converting
+  /// them to indirect calls through function pointer casts.
+  LogicalResult fixMismatchedCallSites(ModuleOp module) const;
+
   template <typename structor_t>
   Operation *appendGlobalStructors(link::LinkState &state) {
     SmallVector<Operation *> toLink;
@@ -125,6 +136,11 @@ public:
 private:
   DataLayoutSpecInterface dtla = {};
   TargetSystemSpecInterface targetSys = {};
+
+  /// Maps function symbol names to pairs of mismatched function types.
+  /// When a function is defined with different signatures in different modules,
+  /// we track both types here so we can later fix call sites.
+  mutable llvm::StringMap<std::pair<Type, Type>> mismatchedFunctions;
 };
 
 } // namespace LLVM

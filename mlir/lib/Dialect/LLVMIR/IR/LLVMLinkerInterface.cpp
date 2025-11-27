@@ -256,6 +256,31 @@ LLVM::LLVMSymbolLinkerInterface::materialize(Operation *src,
   return SymbolAttrLinkerInterface::materialize(src, state);
 }
 
+Conflict LLVM::LLVMSymbolLinkerInterface::findConflict(
+    Operation *src, SymbolTableCollection &collection) const {
+  // First, use the base class to find conflicts
+  auto conflict = SymbolAttrLinkerInterface::findConflict(src, collection);
+
+  // If there's a conflict and both are functions, check for type mismatches
+  if (conflict.hasConflict()) {
+    auto srcFunc = dyn_cast<LLVM::LLVMFuncOp>(src);
+    auto dstFunc = dyn_cast<LLVM::LLVMFuncOp>(conflict.dst);
+
+    if (srcFunc && dstFunc) {
+      auto srcType = srcFunc.getFunctionType();
+      auto dstType = dstFunc.getFunctionType();
+
+      if (srcType != dstType) {
+        // Record the mismatch for later fixing
+        StringRef funcName = srcFunc.getSymName();
+        mismatchedFunctions[funcName] = {srcType, dstType};
+      }
+    }
+  }
+
+  return conflict;
+}
+
 SmallVector<Operation *> LLVM::LLVMSymbolLinkerInterface::dependencies(
     Operation *op, SymbolTableCollection &collection) const {
   Operation *module = op->getParentOfType<ModuleOp>();
@@ -313,6 +338,154 @@ SmallVector<Operation *> LLVM::LLVMSymbolLinkerInterface::dependencies(
 LogicalResult LLVM::LLVMSymbolLinkerInterface::initialize(ModuleOp src) {
   dtla = src.getDataLayoutSpec();
   targetSys = src.getTargetSystemSpec();
+  mismatchedFunctions.clear();
+  return success();
+}
+
+LogicalResult
+LLVM::LLVMSymbolLinkerInterface::verifyLinkageCompatibility(Conflict pair) const {
+  // First, run the base class verification
+  auto &mixin = static_cast<const link::SymbolAttrLLVMLinkerInterface<LLVMSymbolLinkerInterface>&>(*this);
+  if (failed(mixin.LinkerMixin::verifyLinkageCompatibility(pair)))
+    return failure();
+
+  // Check if both operations are functions
+  auto srcFunc = dyn_cast<LLVM::LLVMFuncOp>(pair.src);
+  auto dstFunc = dyn_cast<LLVM::LLVMFuncOp>(pair.dst);
+
+  if (!srcFunc || !dstFunc)
+    return success();
+
+  // Compare function types
+  auto srcType = srcFunc.getFunctionType();
+  auto dstType = dstFunc.getFunctionType();
+
+  if (srcType != dstType) {
+    // Types mismatch - record this for later fixing
+    StringRef funcName = srcFunc.getSymName();
+    mismatchedFunctions[funcName] = {srcType, dstType};
+
+    // Emit a warning but don't fail
+    pair.src->emitWarning()
+        << "function '" << funcName << "' has mismatched signatures: "
+        << srcType << " vs " << dstType
+        << " - call sites will be converted to indirect calls";
+  }
+
+  return success();
+}
+
+LogicalResult
+LLVM::LLVMSymbolLinkerInterface::fixMismatchedCallSites(ModuleOp module) const {
+  if (mismatchedFunctions.empty())
+    return success();
+
+  // Walk through all functions and fix call sites
+  auto result = module.walk([&](LLVM::CallOp callOp) -> WalkResult {
+    // Only handle direct calls (not indirect calls)
+    auto calleeAttr = callOp.getCalleeAttr();
+    if (!calleeAttr)
+      return WalkResult::advance();
+
+    StringRef calleeName = calleeAttr.getValue();
+    auto it = mismatchedFunctions.find(calleeName);
+    if (it == mismatchedFunctions.end())
+      return WalkResult::advance();
+
+    // Found a call to a function with mismatched signature
+    // Convert it to an indirect call through a function pointer cast
+
+    OpBuilder builder(callOp);
+    Location loc = callOp.getLoc();
+
+    // Get the function being called
+    auto funcOp = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
+        callOp, calleeAttr);
+    if (!funcOp) {
+      callOp.emitError("cannot find function ") << calleeName;
+      return WalkResult::interrupt();
+    }
+
+    // Create the expected function type based on the call operands and results
+    SmallVector<Type> argTypes;
+    for (Value arg : callOp.getArgOperands())
+      argTypes.push_back(arg.getType());
+
+    Type resultType;
+    if (callOp.getNumResults() == 0) {
+      resultType = LLVM::LLVMVoidType::get(builder.getContext());
+    } else {
+      resultType = callOp.getResult().getType();
+    }
+
+    auto expectedFuncType = LLVM::LLVMFunctionType::get(
+        resultType, argTypes, callOp.getVarCalleeType().has_value());
+
+    // Get the address of the function
+    auto ptrType = LLVM::LLVMPointerType::get(builder.getContext());
+    auto addressOfOp = builder.create<LLVM::AddressOfOp>(
+        loc, ptrType, calleeAttr.getValue());
+
+    // For indirect calls, the function pointer is passed as the first argument
+    // followed by the actual call arguments
+    SmallVector<Value> indirectCallArgs;
+    indirectCallArgs.push_back(addressOfOp.getResult());
+    indirectCallArgs.append(callOp.getArgOperands().begin(),
+                           callOp.getArgOperands().end());
+
+    // Create an indirect call with the same attributes as the original call
+    // but using the function pointer and expected type
+    auto newCallOp = builder.create<LLVM::CallOp>(loc, expectedFuncType,
+                                                   indirectCallArgs);
+
+    // Copy over relevant attributes
+    if (auto fmf = callOp.getFastmathFlagsAttr())
+      newCallOp.setFastmathFlagsAttr(fmf);
+    if (auto cconv = callOp.getCConvAttr())
+      newCallOp.setCConvAttr(cconv);
+    if (auto tailcall = callOp.getTailCallKindAttr())
+      newCallOp.setTailCallKindAttr(tailcall);
+    if (auto memeff = callOp.getMemoryEffectsAttr())
+      newCallOp.setMemoryEffectsAttr(memeff);
+    if (callOp.getConvergent())
+      newCallOp.setConvergentAttr(builder.getUnitAttr());
+    if (callOp.getNoUnwind())
+      newCallOp.setNoUnwindAttr(builder.getUnitAttr());
+    if (callOp.getWillReturn())
+      newCallOp.setWillReturnAttr(builder.getUnitAttr());
+    if (auto accessGroups = callOp.getAccessGroupsAttr())
+      newCallOp.setAccessGroupsAttr(accessGroups);
+    if (auto aliasScopes = callOp.getAliasScopesAttr())
+      newCallOp.setAliasScopesAttr(aliasScopes);
+    if (auto noaliasScopes = callOp.getNoaliasScopesAttr())
+      newCallOp.setNoaliasScopesAttr(noaliasScopes);
+    if (auto tbaa = callOp.getTbaaAttr())
+      newCallOp.setTbaaAttr(tbaa);
+
+    // Replace the old call with the new indirect call
+    callOp.replaceAllUsesWith(newCallOp);
+    callOp.erase();
+
+    return WalkResult::advance();
+  });
+
+  return failure(result.wasInterrupted());
+}
+
+LogicalResult LLVM::LLVMSymbolLinkerInterface::link(link::LinkState &state) {
+  // First, perform the normal linking process
+  if (failed(SymbolAttrLinkerInterface::link(state)))
+    return failure();
+
+  // After linking but before verification, fix call sites for functions with
+  // mismatched signatures by converting them to indirect calls
+  auto dst = dyn_cast<ModuleOp>(state.getDestinationOp());
+  if (!dst)
+    return success();
+
+  if (failed(fixMismatchedCallSites(dst)))
+    return failure();
+
   return success();
 }
 
