@@ -266,22 +266,27 @@ public:
     Linkage srcLinkage = derived.getLinkage(pair.src);
     Linkage dstLinkage = derived.getLinkage(pair.dst);
 
-    Visibility srcVisibility = derived.getVisibility(pair.src);
-    Visibility dstVisibility = derived.getVisibility(pair.dst);
-    Visibility visibility = getMinVisibility(srcVisibility, dstVisibility);
-
-    derived.setVisibility(pair.src, visibility);
-    derived.setVisibility(pair.dst, visibility);
-
-    UnnamedAddr srcUnnamedAddr = derived.getUnnamedAddr(pair.src);
-    UnnamedAddr dstUnnamedAddr = derived.getUnnamedAddr(pair.dst);
-
-    UnnamedAddr unnamedAddr = getMinUnnamedAddr(srcUnnamedAddr, dstUnnamedAddr);
-    derived.setUnnamedAddr(pair.src, unnamedAddr);
-    derived.setUnnamedAddr(pair.dst, unnamedAddr);
-
     const bool srcIsDeclaration = isDeclarationForLinker(pair.src);
     const bool dstIsDeclaration = isDeclarationForLinker(pair.dst);
+
+    // Only unify visibility and unnamed_addr for non-local, non-appending linkage.
+    // LLVM requires: local linkage must have default visibility.
+    // Unifying visibility before checking linkage can violate this invariant.
+    if (!isLocalLinkage(srcLinkage) && !isAppendingLinkage(srcLinkage)) {
+      Visibility srcVisibility = derived.getVisibility(pair.src);
+      Visibility dstVisibility = derived.getVisibility(pair.dst);
+      Visibility visibility = getMinVisibility(srcVisibility, dstVisibility);
+
+      derived.setVisibility(pair.src, visibility);
+      derived.setVisibility(pair.dst, visibility);
+
+      UnnamedAddr srcUnnamedAddr = derived.getUnnamedAddr(pair.src);
+      UnnamedAddr dstUnnamedAddr = derived.getUnnamedAddr(pair.dst);
+
+      UnnamedAddr unnamedAddr = getMinUnnamedAddr(srcUnnamedAddr, dstUnnamedAddr);
+      derived.setUnnamedAddr(pair.src, unnamedAddr);
+      derived.setUnnamedAddr(pair.dst, unnamedAddr);
+    }
 
     if (!isLocalLinkage(srcLinkage) && !isAppendingLinkage(srcLinkage)) {
       if (derived.isGlobalVar(pair.src) && derived.isGlobalVar(pair.dst)) {
@@ -435,6 +440,49 @@ public:
 
   ConflictResolution getConflictResolution(Conflict pair) const override {
     return LinkerMixin::getConflictResolution(pair);
+  }
+
+  Conflict findConflict(Operation *src,
+                        SymbolTableCollection &collection) const override {
+    assert(canBeLinked(src) && "expected linkable operation");
+    const DerivedLinkerInterface &derived = LinkerMixin::getDerived();
+
+    // If the source has local linkage, there is no name match-up going on.
+    // This matches LLVM's behavior where local linkage symbols never conflict.
+    if (isLocalLinkage(derived.getLinkage(src)))
+      return Conflict::noConflict(src);
+
+    // Check for conflict in the summary
+    StringRef symbol = getSymbol(src);
+    std::lock_guard<std::mutex> lock(this->summaryMutex);
+    auto it = this->summary.find(symbol);
+    if (it == this->summary.end())
+      return Conflict::noConflict(src);
+
+    // If we found a global with the same name, but it has local linkage,
+    // we are really not doing any linkage here.
+    if (isLocalLinkage(derived.getLinkage(it->second)))
+      return Conflict::noConflict(src);
+
+    return {it->second, src};
+  }
+
+  void registerForLink(Operation *op,
+                       SymbolTableCollection &collection) override {
+    assert(canBeLinked(op) && "expected linkable operation");
+
+    std::lock_guard<std::mutex> lock(this->summaryMutex);
+
+    // Local linkage symbols are module-private and should not participate
+    // in conflict detection. Instead of adding them to the summary (which
+    // is used for conflict detection), add them to the uniqued set so they
+    // get materialized with unique names if needed. This matches LLVM's
+    // behavior where local linkage symbols are copied independently.
+    if (isLocalLinkage(LinkerMixin::getDerived().getLinkage(op))) {
+      this->uniqued.insert(op);
+    } else {
+      this->summary[getSymbol(op)] = op;
+    }
   }
 
   LogicalResult resolveConflict(Conflict pair,
