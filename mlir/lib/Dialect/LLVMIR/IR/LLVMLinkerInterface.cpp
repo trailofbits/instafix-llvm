@@ -246,17 +246,33 @@ StringRef LLVM::LLVMSymbolLinkerInterface::getSymbol(Operation *op) const {
 
 bool LLVM::LLVMSymbolLinkerInterface::isLinkNeeded(Conflict pair,
                                                    bool forDependency) const {
-  // For external function declarations with different types, we need to link
-  // so that conflict resolution can pick the "better" type (e.g., i32 over i8).
-  // Without this, declarations are filtered out before conflict resolution.
-  if (pair.dst) {
-    if (auto srcFn = dyn_cast<LLVM::LLVMFuncOp>(pair.src)) {
-      if (auto dstFn = dyn_cast<LLVM::LLVMFuncOp>(pair.dst)) {
-        if (srcFn.isExternal() && dstFn.isExternal() &&
-            srcFn.getFunctionType() != dstFn.getFunctionType()) {
-          // Type mismatch between external declarations - need to resolve
-          return true;
+  // External function declarations need special handling to ensure they're
+  // registered in the summary so conflicts can be detected and resolved.
+  //
+  // The base class filters out declarations (isLinkNeeded returns false),
+  // which means if module 1 has `@foo() -> i32` (declaration only) and
+  // module 2 has `@foo() -> i8` (declaration), there's no conflict to resolve
+  // because module 1's declaration was never registered.
+  //
+  // We fix this by:
+  // 1. Always registering external declarations (when not a dependency)
+  // 2. Forcing conflict resolution when types differ between declarations
+  if (auto srcFn = dyn_cast<LLVM::LLVMFuncOp>(pair.src)) {
+    if (srcFn.isExternal()) {
+      // Case 1: Conflict exists - check if we need type-based resolution
+      if (pair.dst) {
+        if (auto dstFn = dyn_cast<LLVM::LLVMFuncOp>(pair.dst)) {
+          if (dstFn.isExternal() &&
+              srcFn.getFunctionType() != dstFn.getFunctionType()) {
+            // Type mismatch between external declarations - need to resolve
+            return true;
+          }
         }
+      }
+      // Case 2: No conflict yet - register declaration so future conflicts
+      // can be detected. Skip if this is a dependency to avoid double-processing.
+      if (!pair.dst && !forDependency) {
+        return true;
       }
     }
   }
