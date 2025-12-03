@@ -27,6 +27,18 @@ LLVM::LLVMSymbolLinkerInterface::LLVMSymbolLinkerInterface(Dialect *dialect)
     : SymbolAttrLLVMLinkerInterface(dialect) {}
 
 bool LLVM::LLVMSymbolLinkerInterface::canBeLinked(Operation *op) const {
+  // Only link operations that are direct children of a top-level ModuleOp.
+  // This filters out:
+  // 1. Operations nested inside regions (e.g., inside an AliasOp's initializer)
+  // 2. Operations inside nested named modules
+  Operation *parent = op->getParentOp();
+  if (!isa_and_nonnull<ModuleOp>(parent))
+    return false;
+
+  // Check that the parent module is a top-level module (has no parent module)
+  if (parent->getParentOfType<ModuleOp>())
+    return false;
+
   return isa<LLVM::GlobalOp, LLVM::LLVMFuncOp, LLVM::GlobalCtorsOp,
              LLVM::GlobalDtorsOp, LLVM::ComdatOp, LLVM::AliasOp>(op);
 }
@@ -80,7 +92,9 @@ bool LLVM::LLVMSymbolLinkerInterface::hasComdat(Operation *op) {
     return gv.getComdat().has_value();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getComdat().has_value();
-  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp, LLVM::AliasOp>(op))
+  if (auto alias = dyn_cast<LLVM::AliasOp>(op))
+    return alias.getComdat().has_value();
+  if (isa<LLVM::GlobalCtorsOp, LLVM::GlobalDtorsOp>(op))
     return false;
   llvm_unreachable("unexpected operation");
 }
@@ -91,6 +105,8 @@ SymbolRefAttr LLVM::LLVMSymbolLinkerInterface::getComdatSymbol(Operation *op) {
     return gv.getComdat().value();
   if (auto fn = dyn_cast<LLVM::LLVMFuncOp>(op))
     return fn.getComdat().value();
+  if (auto alias = dyn_cast<LLVM::AliasOp>(op))
+    return alias.getComdat().value();
   llvm_unreachable("unexpected operation");
 }
 
@@ -279,6 +295,11 @@ Conflict LLVM::LLVMSymbolLinkerInterface::findConflict(
 SmallVector<Operation *> LLVM::LLVMSymbolLinkerInterface::dependencies(
     Operation *op, SymbolTableCollection &collection) const {
   Operation *module = op->getParentOfType<ModuleOp>();
+  // If this operation is nested inside a region (e.g., inside an AliasOp's
+  // initializer) or inside a nested module, it won't have dependencies that
+  // need linking.
+  if (!module || module->getParentOfType<ModuleOp>())
+    return {};
   SymbolTable &st = collection.getSymbolTable(module);
   SmallVector<Operation *> result;
 
@@ -800,8 +821,6 @@ ComdatResolution LLVM::LLVMSymbolLinkerInterface::computeComdatResolution(
 }
 
 void LLVM::LLVMSymbolLinkerInterface::dropReplacedComdat(Operation *op) const {
-  // TODO replace aliases of dropped COMDAT ops; see dropReplacedComdat in
-  // llvm-link llvm-link test is comdat-rm-dst.ll
   if (auto global = mlir::dyn_cast<LLVM::GlobalOp>(op)) {
     global.removeValueAttr();
 
@@ -819,7 +838,14 @@ void LLVM::LLVMSymbolLinkerInterface::dropReplacedComdat(Operation *op) const {
     body.getBlocks().clear();
 
     func.removeComdatAttr();
-    func.setLinkage(Linkage::AvailableExternally);
+    func.setLinkage(Linkage::External);
+  }
+
+  // Handle aliases: just erase them.
+  // Aliases inherit COMDAT from their aliasee, so if the aliasee's COMDAT
+  // is dropped, the alias should be dropped too.
+  if (auto alias = mlir::dyn_cast<LLVM::AliasOp>(op)) {
+    alias.erase();
   }
 }
 
