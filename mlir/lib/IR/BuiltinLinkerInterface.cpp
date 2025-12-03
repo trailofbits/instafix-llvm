@@ -37,6 +37,8 @@ public:
 
   LogicalResult summarize(ModuleOp src, unsigned flags,
                           SymbolTableCollection &collection) override {
+    if (symbolLinkers.moduleOpSummary(src, symbolTableCollection).failed())
+      return failure();
     // Collect all operations to process in parallel
     SmallVector<Operation *> ops;
     src.walk([&](Operation *op) {
@@ -73,7 +75,7 @@ public:
       linker->registerForLink(op, collection);
     }
 
-    SmallVector<Operation *> deps = linker->dependencies(op, symbolTableCollection);
+    SmallVector<Operation *> deps = linker->dependencies(op, collection);
     auto res = failableParallelForEach(getContext(), deps, [&](Operation *dep) {
       return summarize(dep, flags, /*forDependency=*/true, collection);
     });

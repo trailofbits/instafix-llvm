@@ -1,8 +1,5 @@
 // RUN: mlir-link %s %p/Inputs/comdat.mlir -o - | FileCheck %s
 
-// unimplemented conflict resolution
-// XFAIL: *
-
 module {
   llvm.comdat @__llvm_global_comdat {
     llvm.comdat_selector @foo largest
@@ -23,13 +20,13 @@ module {
 }
 
 // CHECK-DAG: llvm.comdat_selector @qux largest
-// CHECK-DAG: llvm.comdat_selector @foo comdat largest
+// CHECK-DAG: llvm.comdat_selector @foo largest
 // CHECK-DAG: llvm.comdat_selector @any any
 
-// CHECK-DAG: llvm.mlir.global @foo(43 : i64) comdat{{$}}
-// CHECK-DAG: llvm.mlir.global @qux(12 : i64) comdat{{$}}
-// CHECK-DAG: llvm.mlir.global @any(6 : i64) comdat{{$}}
-// CHECK-NOT: llvm.mlir.global @in_unselected_group(13 : i32) comdat(@__llvm_global_comdat::@qux)
-
+// CHECK-DAG: llvm.mlir.global external @foo(43 : i64) comdat(@__llvm_global_comdat::@foo)
+// CHECK-DAG: llvm.mlir.global external @qux(12 : i64) comdat(@__llvm_global_comdat::@qux)
+// CHECK-DAG: llvm.mlir.global external @any(6 : i64) comdat(@__llvm_global_comdat::@any)
 // CHECK-DAG: llvm.func @baz() -> i32 comdat(@__llvm_global_comdat::@qux) {
 // CHECK-DAG: llvm.func @bar() -> i32 comdat(@__llvm_global_comdat::@foo) {
+// CHECK-NOT: llvm.mlir.global @in_unselected_group(13 : i32) comdat(@__llvm_global_comdat::@qux)
+
