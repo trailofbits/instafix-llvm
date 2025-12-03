@@ -260,7 +260,8 @@ LogicalResult mlir::MlirLinkMain(int argc, char **argv,
   MLIRContext context(registry);
   context.allowUnregisteredDialects(options.shouldAllowUnregisteredDialects());
 
-  mlir::SymbolTableCollection symbolTableCollection;
+  mlir::SymbolTableCollection baseCollection;
+  mlir::LockedSymbolTableCollection symbolTableCollection(baseCollection);
   Linker linker(&context, symbolTableCollection, options);
 
   // Prepare output file
