@@ -1,4 +1,4 @@
-// RUN: mlir-link %s | FileCheck %s
+// RUN: mlir-link -sort-symbols %s | FileCheck %s
 
 // Test for single-module global constructor linking regression
 // This test exercises the specific fix in LLVMLinkerInterface.h where
@@ -11,7 +11,6 @@
 
 // This global constructor table tests the single-module case
 // The linker should find this in the summary and properly link it
-// CHECK: llvm.mlir.global_ctors ctors = [@_GLOBAL__sub_I_exp], priorities = [65535 : i32], data = [#llvm.zero]
 llvm.mlir.global_ctors ctors = [@_GLOBAL__sub_I_exp], priorities = [65535 : i32], data = [#llvm.zero]
 
 // CHECK: llvm.func internal @_GLOBAL__sub_I_exp()
@@ -21,6 +20,8 @@ llvm.func internal @_GLOBAL__sub_I_exp() {
   %c42 = llvm.mlir.constant(42 : i32) : i32
   llvm.return
 }
+
+// CHECK: llvm.mlir.global_ctors ctors = [@_GLOBAL__sub_I_exp], priorities = [65535 : i32], data = [#llvm.zero]
 
 // Test function to make this a meaningful module
 // CHECK: llvm.func @main()
