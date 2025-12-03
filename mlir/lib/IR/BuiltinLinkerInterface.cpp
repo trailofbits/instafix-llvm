@@ -73,7 +73,7 @@ public:
       linker->registerForLink(op, collection);
     }
 
-    SmallVector<Operation *> deps = linker->dependencies(op, symbolTableCollection);
+    SmallVector<Operation *> deps = linker->dependencies(op, collection);
     auto res = failableParallelForEach(getContext(), deps, [&](Operation *dep) {
       return summarize(dep, flags, /*forDependency=*/true, collection);
     });
