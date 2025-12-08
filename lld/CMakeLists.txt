@@ -209,7 +209,7 @@ add_subdirectory(wasm)
 add_custom_target(lld-headers)
 set_target_properties(lld-headers PROPERTIES FOLDER "Misc")
 if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
-  install(DIRECTORY include/lld
+  install(DIRECTORY include/lld ${CMAKE_CURRENT_BINARY_DIR}/include/lld
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
     COMPONENT lld-headers
     FILES_MATCHING
