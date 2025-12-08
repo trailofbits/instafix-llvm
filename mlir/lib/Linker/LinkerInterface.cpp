@@ -125,8 +125,13 @@ Conflict SymbolAttrLinkerInterface::findConflict(Operation *src,
 
 void SymbolAttrLinkerInterface::registerForLink(Operation *op,
                                                 SymbolTableCollection &collection) {
-  assert(canBeLinked(op) && "expected linkable operation");
   std::lock_guard<std::mutex> lock(summaryMutex);
+  registerForLinkUnlocked(op, collection);
+}
+
+void SymbolAttrLinkerInterface::registerForLinkUnlocked(Operation *op,
+                                                SymbolTableCollection &collection) {
+  assert(canBeLinked(op) && "expected linkable operation");
   summary[getSymbol(op)] = op;
 }
 
@@ -246,8 +251,8 @@ SymbolAttrLinkerInterface::resolveConflict(Conflict pair,
     {
       std::lock_guard<std::mutex> lock(summaryMutex);
       uniqued.insert(pair.dst);
+      registerForLinkUnlocked(pair.src, collection);
     }
-    registerForLink(pair.src, collection);
     return success();
   case ConflictResolution::LinkFromBothAndRenameSrc:
     {

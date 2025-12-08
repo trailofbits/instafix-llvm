@@ -467,24 +467,6 @@ public:
     return {it->second, src};
   }
 
-  void registerForLink(Operation *op,
-                       SymbolTableCollection &collection) override {
-    assert(canBeLinked(op) && "expected linkable operation");
-
-    std::lock_guard<std::mutex> lock(this->summaryMutex);
-
-    // Local linkage symbols are module-private and should not participate
-    // in conflict detection. Instead of adding them to the summary (which
-    // is used for conflict detection), add them to the uniqued set so they
-    // get materialized with unique names if needed. This matches LLVM's
-    // behavior where local linkage symbols are copied independently.
-    if (isLocalLinkage(LinkerMixin::getDerived().getLinkage(op))) {
-      this->uniqued.insert(op);
-    } else {
-      this->summary[getSymbol(op)] = op;
-    }
-  }
-
   LogicalResult resolveConflict(Conflict pair,
                                 ConflictResolution resolution,
                                 SymbolTableCollection &collection) override {
@@ -504,6 +486,22 @@ public:
 protected:
   // Operations to append together
   llvm::StringMap<llvm::SmallVector<Operation *, 2>> append;
+
+  void registerForLinkUnlocked(Operation *op,
+                       SymbolTableCollection &collection) override {
+    assert(canBeLinked(op) && "expected linkable operation");
+
+    // Local linkage symbols are module-private and should not participate
+    // in conflict detection. Instead of adding them to the summary (which
+    // is used for conflict detection), add them to the uniqued set so they
+    // get materialized with unique names if needed. This matches LLVM's
+    // behavior where local linkage symbols are copied independently.
+    if (isLocalLinkage(LinkerMixin::getDerived().getLinkage(op))) {
+      this->uniqued.insert(op);
+    } else {
+      SymbolAttrLinkerInterface::registerForLinkUnlocked(op, collection);
+    }
+  }
 };
 } // namespace mlir::link
 

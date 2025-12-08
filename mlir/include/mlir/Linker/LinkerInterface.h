@@ -219,6 +219,9 @@ protected:
 
   // Mutex to protect summary and uniqued during parallel summarization.
   mutable std::mutex summaryMutex;
+
+  /// Records a non-conflicting operation for linking.
+  virtual void registerForLinkUnlocked(Operation *op, SymbolTableCollection &collection);
 };
 
 //===----------------------------------------------------------------------===//
