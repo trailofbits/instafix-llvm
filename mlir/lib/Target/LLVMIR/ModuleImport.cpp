@@ -1376,6 +1376,15 @@ LogicalResult ModuleImport::convertAlias(llvm::GlobalAlias *alias) {
     aliasOp.setUnnamedAddr(convertUnnamedAddrFromLLVM(alias->getUnnamedAddr()));
   aliasOp.setVisibility_(convertVisibilityFromLLVM(alias->getVisibility()));
 
+  // Aliases inherit COMDAT from their aliasee (per LLVM LangRef).
+  // The aliasee should be a GlobalValue that may have a COMDAT.
+  if (llvm::GlobalValue *aliaseeObj = alias->getAliaseeObject()) {
+    if (auto *aliasee = dyn_cast<llvm::GlobalObject>(aliaseeObj)) {
+      if (aliasee->hasComdat())
+        aliasOp.setComdatAttr(comdatMapping.lookup(aliasee->getComdat()));
+    }
+  }
+
   return success();
 }
 

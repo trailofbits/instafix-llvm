@@ -1533,7 +1533,8 @@ def LLVM_AliasOp : LLVM_Op<"mlir.alias",
     UnitAttr:$dso_local,
     UnitAttr:$thread_local_,
     OptionalAttr<UnnamedAddr>:$unnamed_addr,
-    DefaultValuedAttr<Visibility, "mlir::LLVM::Visibility::Default">:$visibility_
+    DefaultValuedAttr<Visibility, "mlir::LLVM::Visibility::Default">:$visibility_,
+    OptionalAttr<SymbolRefAttr>:$comdat
   );
   let summary = "LLVM dialect alias.";
   let description = [{

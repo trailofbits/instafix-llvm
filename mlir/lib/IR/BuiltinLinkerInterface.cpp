@@ -37,6 +37,8 @@ public:
 
   LogicalResult summarize(ModuleOp src, unsigned flags,
                           SymbolTableCollection &collection) override {
+    if (symbolLinkers.moduleOpSummary(src, symbolTableCollection).failed())
+      return failure();
     // Collect all operations to process in parallel
     SmallVector<Operation *> ops;
     src.walk([&](Operation *op) {
