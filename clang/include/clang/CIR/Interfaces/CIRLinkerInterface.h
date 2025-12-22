@@ -73,6 +73,10 @@ public:
   static llvm::StringRef getSection(Operation *op);
 
   static std::optional<cir::AddressSpace> getAddressSpace(Operation *op);
+
+  /// Finalize the linked module by updating cir.get_global types to match
+  /// the linked cir.func types.
+  LogicalResult finalize(ModuleOp dst) const override;
 };
 
 void registerLinkerInterface(mlir::DialectRegistry &registry);

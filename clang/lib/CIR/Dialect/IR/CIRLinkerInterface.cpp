@@ -12,6 +12,8 @@
 
 #include "clang/CIR/Interfaces/CIRLinkerInterface.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/SymbolTable.h"
 
 using namespace mlir;
 using namespace mlir::link;
@@ -195,6 +197,71 @@ CIRSymbolLinkerInterface::getAddressSpace(Operation *op) {
   }
 
   llvm_unreachable("unexpected operation");
+}
+
+//===----------------------------------------------------------------------===//
+// finalize - Fix cir.get_global types after linking
+//===----------------------------------------------------------------------===//
+
+// Walk all GetGlobalOp operations and fix type mismatches.
+// This handles the case where a declaration with unspecified parameters
+// (e.g., `int foo();` producing `!cir.func<(...) -> !s32i>`) is linked
+// with a definition (e.g., `int foo() {}` producing `!cir.func<() -> !s32i>`).
+// The GetGlobalOp may still have the declaration's type while the FuncOp
+// has the definition's type after linking.
+
+LogicalResult CIRSymbolLinkerInterface::finalize(ModuleOp dst) const {
+
+  SmallVector<GetGlobalOp> toFix;
+
+  dst.walk([&](GetGlobalOp getGlobal) {
+    auto *symOp = SymbolTable::lookupNearestSymbolFrom(
+        getGlobal, getGlobal.getNameAttr());
+    if (!symOp)
+      return;
+
+    auto funcOp = dyn_cast<FuncOp>(symOp);
+    if (!funcOp)
+      return;
+
+    auto expectedPointeeType = funcOp.getFunctionType();
+
+    auto currentPtrType = dyn_cast<PointerType>(getGlobal.getAddr().getType());
+    if (!currentPtrType)
+      return;
+
+    auto currentPointeeType = currentPtrType.getPointee();
+
+    if (currentPointeeType == expectedPointeeType)
+      return;
+
+    toFix.push_back(getGlobal);
+  });
+
+  // Fix the mismatched GetGlobalOps
+  for (GetGlobalOp getGlobal : toFix) {
+    auto *symOp = SymbolTable::lookupNearestSymbolFrom(
+        getGlobal, getGlobal.getNameAttr());
+    auto funcOp = cast<FuncOp>(symOp);
+    auto expectedPointeeType = funcOp.getFunctionType();
+
+    auto currentPtrType = cast<PointerType>(getGlobal.getAddr().getType());
+
+    auto newPtrType = PointerType::get(
+        dst.getContext(), expectedPointeeType, currentPtrType.getAddrSpace());
+
+    OpBuilder builder(getGlobal);
+    auto newGetGlobal = builder.create<GetGlobalOp>(
+        getGlobal.getLoc(),
+        newPtrType,
+        getGlobal.getName(),
+        getGlobal.getTls());
+
+    getGlobal.getAddr().replaceAllUsesWith(newGetGlobal.getAddr());
+    getGlobal.erase();
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
