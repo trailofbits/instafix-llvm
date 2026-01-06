@@ -1,0 +1,35 @@
+// RUN: cir-link -sort-symbols -split-input-file %s | FileCheck %s
+
+// CHECK:      cir.func @bar(%arg0: !s8i) -> !s8i {
+// CHECK-NEXT:   cir.return %arg0 : !s8i
+// CHECK-NEXT: }
+
+// CHECK:      cir.func @caller() -> !s32i {
+// CHECK-NEXT:   %[[ADDR:.*]] = cir.get_global @bar : !cir.ptr<!cir.func<(!s8i) -> !s8i>>
+// CHECK-NEXT:   %[[ARG:.*]] = cir.const #cir.int<42> : !s32i
+// CHECK-NEXT:   %[[RESULT:.*]] = cir.call %[[ADDR]](%[[ARG]]) : (!cir.ptr<!cir.func<(!s8i) -> !s8i>>, !s32i) -> !s32i
+// CHECK-NEXT:   cir.return %[[RESULT]] : !s32i
+// CHECK-NEXT: }
+
+!s32i = !cir.int<s, 32>
+!s8i = !cir.int<s, 8>
+
+module {
+  cir.func private @bar(!s32i) -> !s32i
+
+  cir.func @caller() -> !s32i {
+    %0 = cir.const #cir.int<42> : !s32i
+    %1 = cir.call @bar(%0) : (!s32i) -> !s32i
+    cir.return %1 : !s32i
+  }
+}
+
+// -----
+
+!s8i = !cir.int<s, 8>
+
+module {
+  cir.func @bar(%arg0: !s8i) -> !s8i {
+    cir.return %arg0 : !s8i
+  }
+}
