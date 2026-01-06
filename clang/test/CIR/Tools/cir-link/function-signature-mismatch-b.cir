@@ -5,8 +5,8 @@
 // CHECK-NEXT: }
 
 // CHECK:      cir.func @caller() -> !s32i {
-// CHECK-NEXT:   %[[ADDR:.*]] = cir.get_global @bar : !cir.ptr<!cir.func<(!s8i) -> !s8i>>
 // CHECK-NEXT:   %[[ARG:.*]] = cir.const #cir.int<42> : !s32i
+// CHECK-NEXT:   %[[ADDR:.*]] = cir.get_global @bar : !cir.ptr<!cir.func<(!s8i) -> !s8i>>
 // CHECK-NEXT:   %[[RESULT:.*]] = cir.call %[[ADDR]](%[[ARG]]) : (!cir.ptr<!cir.func<(!s8i) -> !s8i>>, !s32i) -> !s32i
 // CHECK-NEXT:   cir.return %[[RESULT]] : !s32i
 // CHECK-NEXT: }

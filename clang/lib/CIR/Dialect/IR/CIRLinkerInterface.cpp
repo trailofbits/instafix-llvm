@@ -265,6 +265,155 @@ LogicalResult CIRSymbolLinkerInterface::finalize(ModuleOp dst) const {
 }
 
 //===----------------------------------------------------------------------===//
+// verifyLinkageCompatibility - Track function signature mismatches
+//===----------------------------------------------------------------------===//
+
+// During linking, when two translation units define the same function with
+// different signatures (e.g., `extern int bar(int)` vs `char bar(char)`),
+// we need to track these mismatches so we can fix call sites later.
+//
+// This is valid (though questionable) C code that the linker must handle.
+// We record the mismatch but don't fail - the actual fix happens in
+// fixMismatchedCallSites() after linking completes.
+
+LogicalResult
+CIRSymbolLinkerInterface::verifyLinkageCompatibility(Conflict pair) const {
+  // Delegate to base class for standard linkage compatibility checks
+  auto &mixin =
+      static_cast<const SymbolAttrLLVMLinkerInterface<CIRSymbolLinkerInterface>
+                      &>(*this);
+  if (failed(mixin.LinkerMixin::verifyLinkageCompatibility(pair)))
+    return failure();
+
+  // Only track mismatches for function symbols
+  auto srcFunc = dyn_cast<FuncOp>(pair.src);
+  auto dstFunc = dyn_cast<FuncOp>(pair.dst);
+  if (!srcFunc || !dstFunc)
+    return success();
+
+  // If the function types differ, record the mismatch for later processing.
+  // We don't fail here because this is technically valid C (the linker just
+  // picks one definition), but we need to fix up call sites that use the
+  // "wrong" signature.
+  auto srcType = srcFunc.getFunctionType();
+  auto dstType = dstFunc.getFunctionType();
+  if (srcType != dstType) {
+    mismatchedFunctions[srcFunc.getSymName()] = {srcType, dstType};
+    pair.src->emitWarning()
+        << "function has mismatched signatures - call sites will be converted "
+           "to indirect calls";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// fixMismatchedCallSites - Convert direct calls to indirect calls
+//===----------------------------------------------------------------------===//
+
+// When a direct call (e.g., `cir.call @bar(%0)`) targets a function whose
+// signature was different in the caller's translation unit, we must convert
+// it to an indirect call through a function pointer. This allows the call
+// to proceed even though the actual function has a different signature.
+//
+// Transformation:
+//   Before: %r = cir.call @bar(%arg) : (!s32i) -> !s32i
+//   After:  %ptr = cir.get_global @bar : !cir.ptr<!cir.func<(!s8i) -> !s8i>>
+//           %r = cir.call %ptr(%arg) : (!cir.ptr<!cir.func<...>>, !s32i) -> !s32i
+//
+// Note: This complements finalize(), which fixes existing cir.get_global ops.
+// - finalize() handles: existing indirect calls with wrong get_global type
+// - fixMismatchedCallSites() handles: direct calls that need conversion
+
+LogicalResult
+CIRSymbolLinkerInterface::fixMismatchedCallSites(ModuleOp module) const {
+  if (mismatchedFunctions.empty())
+    return success();
+
+  auto result = module->walk([&](CallOp callOp) -> WalkResult {
+    // Skip indirect calls - they don't have a callee attribute and are
+    // handled by finalize() instead
+    auto calleeAttr = callOp.getCalleeAttr();
+    if (!calleeAttr)
+      return WalkResult::advance();
+
+    // Skip calls to functions that don't have signature mismatches
+    StringRef calleeName = calleeAttr.getValue();
+    if (mismatchedFunctions.find(calleeName) == mismatchedFunctions.end())
+      return WalkResult::advance();
+
+    // Found a direct call to a function with mismatched signature.
+    // Convert it to an indirect call through cir.get_global.
+    OpBuilder builder(callOp);
+    Location loc = callOp.getLoc();
+
+    // Look up the linked function to get its actual (resolved) type
+    auto funcOp = dyn_cast<FuncOp>(
+        SymbolTable::lookupNearestSymbolFrom(callOp, calleeAttr));
+    if (!funcOp) {
+      callOp.emitError("cannot find function '") << calleeName << "'";
+      return WalkResult::interrupt();
+    }
+
+    // Create a cir.get_global to get the function's address.
+    // The pointer type uses the linked function's actual type.
+    auto linkedFuncType = funcOp.getFunctionType();
+    auto ptrType = PointerType::get(module->getContext(), linkedFuncType);
+    auto getGlobal = builder.create<GetGlobalOp>(
+        loc, ptrType, mlir::FlatSymbolRefAttr::get(funcOp.getSymNameAttr()));
+
+    // Reconstruct the caller's original view of the function type from
+    // the call's operand and result types. This preserves the caller's
+    // expectations even though the actual function signature differs.
+    SmallVector<Type> argTypes;
+    for (Value arg : callOp.getArgOperands())
+      argTypes.push_back(arg.getType());
+
+    Type resultType = callOp.getNumResults() > 0
+                          ? callOp.getResult().getType()
+                          : cir::VoidType::get(module->getContext());
+
+    // Preserve variadic status from the linked function
+    bool isVarArg = linkedFuncType.isVarArg();
+    auto callerFuncType = cir::FuncType::get(argTypes, resultType, isVarArg);
+
+    // Create the indirect call, preserving all attributes from the original
+    auto newCall =
+        builder.create<CallOp>(loc, getGlobal.getAddr(), callerFuncType,
+                               callOp.getArgOperands(), callOp.getCallingConv(),
+                               callOp.getSideEffect(), callOp.getExceptionAttr());
+    newCall.setExtraAttrsAttr(callOp.getExtraAttrs());
+
+    // Replace the original direct call with our new indirect call
+    callOp->replaceAllUsesWith(newCall);
+    callOp.erase();
+    return WalkResult::advance();
+  });
+
+  return failure(result.wasInterrupted());
+}
+
+//===----------------------------------------------------------------------===//
+// link - Override to fix mismatched call sites after linking
+//===----------------------------------------------------------------------===//
+
+// Override the link method to insert our call site fixup pass after the
+// standard linking process completes but before verification runs.
+
+LogicalResult CIRSymbolLinkerInterface::link(link::LinkState &state) {
+  // First, perform the standard linking process
+  if (failed(SymbolAttrLinkerInterface::link(state)))
+    return failure();
+
+  // Then fix any direct calls to functions with mismatched signatures
+  auto dst = dyn_cast<ModuleOp>(state.getDestinationOp());
+  if (!dst)
+    return success();
+
+  return fixMismatchedCallSites(dst);
+}
+
+//===----------------------------------------------------------------------===//
 // registerLinkerInterface
 //===----------------------------------------------------------------------===//
 
