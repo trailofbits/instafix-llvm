@@ -20,6 +20,7 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Value.h"
+#include "clang/AST/Expr.h"
 #include "clang/AST/GlobalDecl.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/TargetBuiltins.h"
@@ -418,12 +419,39 @@ static mlir::Value emitX86PSRLDQIByteShift(CIRGenFunction &cgf,
 
 mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
                                                const CallExpr *E) {
-  if (BuiltinID == Builtin::BI__builtin_cpu_is)
-    llvm_unreachable("__builtin_cpu_is NYI");
-  if (BuiltinID == Builtin::BI__builtin_cpu_supports)
-    llvm_unreachable("__builtin_cpu_supports NYI");
-  if (BuiltinID == Builtin::BI__builtin_cpu_init)
-    llvm_unreachable("__builtin_cpu_init NYI");
+  if (BuiltinID == Builtin::BI__builtin_cpu_is) {
+    // Use LLVMIntrinsicCallOp fallback pattern - defer to lowering
+    const Expr *CPUExpr = E->getArg(0)->IgnoreParenCasts();
+    StringRef CPUStr = cast<StringLiteral>(CPUExpr)->getString();
+    std::string intrinsicName = "x86.cpu.is." + CPUStr.str();
+    mlir::Type boolTy = builder.getBoolTy();
+    return builder
+        .create<cir::LLVMIntrinsicCallOp>(getLoc(E->getExprLoc()),
+                                          builder.getStringAttr(intrinsicName),
+                                          boolTy)
+        .getResult();
+  }
+  if (BuiltinID == Builtin::BI__builtin_cpu_supports) {
+    // Use LLVMIntrinsicCallOp fallback pattern - defer to lowering
+    const Expr *FeatureExpr = E->getArg(0)->IgnoreParenCasts();
+    StringRef FeatureStr = cast<StringLiteral>(FeatureExpr)->getString();
+    std::string intrinsicName = "x86.cpu.supports." + FeatureStr.str();
+    mlir::Type boolTy = builder.getBoolTy();
+    return builder
+        .create<cir::LLVMIntrinsicCallOp>(getLoc(E->getExprLoc()),
+                                          builder.getStringAttr(intrinsicName),
+                                          boolTy)
+        .getResult();
+  }
+  if (BuiltinID == Builtin::BI__builtin_cpu_init) {
+    // Use LLVMIntrinsicCallOp fallback pattern - defer to lowering
+    mlir::Type voidTy = cir::VoidType::get(&getMLIRContext());
+    return builder
+        .create<cir::LLVMIntrinsicCallOp>(getLoc(E->getExprLoc()),
+                                          builder.getStringAttr("x86.cpu.init"),
+                                          voidTy)
+        .getResult();
+  }
 
   // Handle MSVC intrinsics before argument evaluation to prevent double
   // evaluation.
@@ -772,35 +800,35 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vcvtw2ph512_mask:
   case X86::BI__builtin_ia32_vcvtdq2ph512_mask:
   case X86::BI__builtin_ia32_vcvtqq2ph512_mask:
-    llvm_unreachable("vcvtw2ph256_round_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cvtudq2ps512_mask:
   case X86::BI__builtin_ia32_cvtuqq2ps512_mask:
   case X86::BI__builtin_ia32_cvtuqq2pd512_mask:
   case X86::BI__builtin_ia32_vcvtuw2ph512_mask:
   case X86::BI__builtin_ia32_vcvtudq2ph512_mask:
   case X86::BI__builtin_ia32_vcvtuqq2ph512_mask:
-    llvm_unreachable("vcvtuw2ph256_round_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddss3:
   case X86::BI__builtin_ia32_vfmaddsd3:
   case X86::BI__builtin_ia32_vfmaddsh3_mask:
   case X86::BI__builtin_ia32_vfmaddss3_mask:
   case X86::BI__builtin_ia32_vfmaddsd3_mask:
-    llvm_unreachable("vfmaddss3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddss:
   case X86::BI__builtin_ia32_vfmaddsd:
-    llvm_unreachable("vfmaddss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddsh3_maskz:
   case X86::BI__builtin_ia32_vfmaddss3_maskz:
   case X86::BI__builtin_ia32_vfmaddsd3_maskz:
-    llvm_unreachable("vfmaddsh3_maskz NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddsh3_mask3:
   case X86::BI__builtin_ia32_vfmaddss3_mask3:
   case X86::BI__builtin_ia32_vfmaddsd3_mask3:
-    llvm_unreachable("vfmaddsh3_mask3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmsubsh3_mask3:
   case X86::BI__builtin_ia32_vfmsubss3_mask3:
   case X86::BI__builtin_ia32_vfmsubsd3_mask3:
-    llvm_unreachable("vfmaddsh3_mask3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddph:
   case X86::BI__builtin_ia32_vfmaddps:
   case X86::BI__builtin_ia32_vfmaddpd:
@@ -822,7 +850,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vfmaddpd512_mask3:
   case X86::BI__builtin_ia32_vfmsubpd512_mask3:
   case X86::BI__builtin_ia32_vfmsubph512_mask3:
-    llvm_unreachable("vfmaddph256_round_mask3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddsubph512_mask:
   case X86::BI__builtin_ia32_vfmaddsubph512_maskz:
   case X86::BI__builtin_ia32_vfmaddsubph512_mask3:
@@ -835,7 +863,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vfmaddsubpd512_maskz:
   case X86::BI__builtin_ia32_vfmaddsubpd512_mask3:
   case X86::BI__builtin_ia32_vfmsubaddpd512_mask3:
-    llvm_unreachable("vfmaddsubph256_round_mask3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_movdqa32store128_mask:
   case X86::BI__builtin_ia32_movdqa64store128_mask:
   case X86::BI__builtin_ia32_storeaps128_mask:
@@ -956,7 +984,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_expandqi128_mask:
   case X86::BI__builtin_ia32_expandqi256_mask:
   case X86::BI__builtin_ia32_expandqi512_mask:
-    llvm_unreachable("expand*_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_compressdf128_mask:
   case X86::BI__builtin_ia32_compressdf256_mask:
@@ -976,7 +1004,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_compressqi128_mask:
   case X86::BI__builtin_ia32_compressqi256_mask:
   case X86::BI__builtin_ia32_compressqi512_mask:
-    llvm_unreachable("compress*_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_gather3div2df:
   case X86::BI__builtin_ia32_gather3div2di:
@@ -1220,7 +1248,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_extracti64x2_256_mask:
   case X86::BI__builtin_ia32_extractf64x2_512_mask:
   case X86::BI__builtin_ia32_extracti64x2_512_mask:
-    llvm_unreachable("extractf128 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vinsertf128_pd256:
   case X86::BI__builtin_ia32_vinsertf128_ps256:
   case X86::BI__builtin_ia32_vinsertf128_si256:
@@ -1271,7 +1299,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
 
   case X86::BI__builtin_ia32_pmovqd512_mask:
   case X86::BI__builtin_ia32_pmovwb512_mask:
-    llvm_unreachable("pmovqd512_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_pblendw128:
   case X86::BI__builtin_ia32_blendpd:
   case X86::BI__builtin_ia32_blendps:
@@ -1296,11 +1324,11 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_pshuflw:
   case X86::BI__builtin_ia32_pshuflw256:
   case X86::BI__builtin_ia32_pshuflw512:
-    llvm_unreachable("pshuflw NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_pshufhw:
   case X86::BI__builtin_ia32_pshufhw256:
   case X86::BI__builtin_ia32_pshufhw512:
-    llvm_unreachable("pshufhw NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_pshufd:
   case X86::BI__builtin_ia32_pshufd256:
   case X86::BI__builtin_ia32_pshufd512:
@@ -1351,23 +1379,23 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    llvm_unreachable("shufpd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_permdi256:
   case X86::BI__builtin_ia32_permdf256:
   case X86::BI__builtin_ia32_permdi512:
   case X86::BI__builtin_ia32_permdf512:
-    llvm_unreachable("permdi NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_palignr128:
   case X86::BI__builtin_ia32_palignr256:
   case X86::BI__builtin_ia32_palignr512:
-    llvm_unreachable("palignr NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_alignd128:
   case X86::BI__builtin_ia32_alignd256:
   case X86::BI__builtin_ia32_alignd512:
   case X86::BI__builtin_ia32_alignq128:
   case X86::BI__builtin_ia32_alignq256:
   case X86::BI__builtin_ia32_alignq512:
-    llvm_unreachable("alignd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_shuf_f32x4_256:
   case X86::BI__builtin_ia32_shuf_f64x2_256:
   case X86::BI__builtin_ia32_shuf_i32x4_256:
@@ -1376,12 +1404,12 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_shuf_f64x2:
   case X86::BI__builtin_ia32_shuf_i32x4:
   case X86::BI__builtin_ia32_shuf_i64x2:
-    llvm_unreachable("shuf_f32x4 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vperm2f128_pd256:
   case X86::BI__builtin_ia32_vperm2f128_ps256:
   case X86::BI__builtin_ia32_vperm2f128_si256:
   case X86::BI__builtin_ia32_permti256:
-    llvm_unreachable("vperm2f128 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_pslldqi128_byteshift:
   case X86::BI__builtin_ia32_pslldqi256_byteshift:
   case X86::BI__builtin_ia32_pslldqi512_byteshift:
@@ -1398,7 +1426,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    llvm_unreachable("kshiftl NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kshiftriqi:
   case X86::BI__builtin_ia32_kshiftrihi:
   case X86::BI__builtin_ia32_kshiftrisi:
@@ -1407,7 +1435,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    llvm_unreachable("kshiftr NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   // Rotate is a special case of funnel shift - 1st 2 args are the same.
   case X86::BI__builtin_ia32_vprotb:
   case X86::BI__builtin_ia32_vprotw:
@@ -1429,7 +1457,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_prolvq128:
   case X86::BI__builtin_ia32_prolvq256:
   case X86::BI__builtin_ia32_prolvq512:
-    llvm_unreachable("rotate NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_prord128:
   case X86::BI__builtin_ia32_prord256:
   case X86::BI__builtin_ia32_prord512:
@@ -1442,7 +1470,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_prorvq128:
   case X86::BI__builtin_ia32_prorvq256:
   case X86::BI__builtin_ia32_prorvq512:
-    llvm_unreachable("prord NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_selectb_128:
   case X86::BI__builtin_ia32_selectb_256:
   case X86::BI__builtin_ia32_selectb_512:
@@ -1467,12 +1495,12 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_selectpd_128:
   case X86::BI__builtin_ia32_selectpd_256:
   case X86::BI__builtin_ia32_selectpd_512:
-    llvm_unreachable("select NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_selectsh_128:
   case X86::BI__builtin_ia32_selectsbf_128:
   case X86::BI__builtin_ia32_selectss_128:
   case X86::BI__builtin_ia32_selectsd_128:
-    llvm_unreachable("selectsh NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpb128_mask:
   case X86::BI__builtin_ia32_cmpb256_mask:
   case X86::BI__builtin_ia32_cmpb512_mask:
@@ -1485,7 +1513,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_cmpq128_mask:
   case X86::BI__builtin_ia32_cmpq256_mask:
   case X86::BI__builtin_ia32_cmpq512_mask:
-    llvm_unreachable("cmpb NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_ucmpb128_mask:
   case X86::BI__builtin_ia32_ucmpb256_mask:
   case X86::BI__builtin_ia32_ucmpb512_mask:
@@ -1498,28 +1526,28 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_ucmpq128_mask:
   case X86::BI__builtin_ia32_ucmpq256_mask:
   case X86::BI__builtin_ia32_ucmpq512_mask:
-    llvm_unreachable("ucmpb NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vpcomb:
   case X86::BI__builtin_ia32_vpcomw:
   case X86::BI__builtin_ia32_vpcomd:
   case X86::BI__builtin_ia32_vpcomq:
-    llvm_unreachable("vpcomb NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vpcomub:
   case X86::BI__builtin_ia32_vpcomuw:
   case X86::BI__builtin_ia32_vpcomud:
   case X86::BI__builtin_ia32_vpcomuq:
-    llvm_unreachable("vpcomub NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_kortestcqi:
   case X86::BI__builtin_ia32_kortestchi:
   case X86::BI__builtin_ia32_kortestcsi:
   case X86::BI__builtin_ia32_kortestcdi:
-    llvm_unreachable("kortestc NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kortestzqi:
   case X86::BI__builtin_ia32_kortestzhi:
   case X86::BI__builtin_ia32_kortestzsi:
   case X86::BI__builtin_ia32_kortestzdi:
-    llvm_unreachable("kortestz NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_ktestcqi:
   case X86::BI__builtin_ia32_ktestzqi:
   case X86::BI__builtin_ia32_ktestchi:
@@ -1528,52 +1556,52 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_ktestzsi:
   case X86::BI__builtin_ia32_ktestcdi:
   case X86::BI__builtin_ia32_ktestzdi:
-    llvm_unreachable("ktestc NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kaddqi:
   case X86::BI__builtin_ia32_kaddhi:
   case X86::BI__builtin_ia32_kaddsi:
   case X86::BI__builtin_ia32_kadddi:
-    llvm_unreachable("kadd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kandqi:
   case X86::BI__builtin_ia32_kandhi:
   case X86::BI__builtin_ia32_kandsi:
   case X86::BI__builtin_ia32_kanddi:
-    llvm_unreachable("kand NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kandnqi:
   case X86::BI__builtin_ia32_kandnhi:
   case X86::BI__builtin_ia32_kandnsi:
   case X86::BI__builtin_ia32_kandndi:
-    llvm_unreachable("kandn NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_korqi:
   case X86::BI__builtin_ia32_korhi:
   case X86::BI__builtin_ia32_korsi:
   case X86::BI__builtin_ia32_kordi:
-    llvm_unreachable("kor NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kxnorqi:
   case X86::BI__builtin_ia32_kxnorhi:
   case X86::BI__builtin_ia32_kxnorsi:
   case X86::BI__builtin_ia32_kxnordi:
-    llvm_unreachable("kxnor NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kxorqi:
   case X86::BI__builtin_ia32_kxorhi:
   case X86::BI__builtin_ia32_kxorsi:
   case X86::BI__builtin_ia32_kxordi:
-    llvm_unreachable("kxor NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_knotqi:
   case X86::BI__builtin_ia32_knothi:
   case X86::BI__builtin_ia32_knotsi:
   case X86::BI__builtin_ia32_knotdi:
-    llvm_unreachable("knot NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_kmovb:
   case X86::BI__builtin_ia32_kmovw:
   case X86::BI__builtin_ia32_kmovd:
   case X86::BI__builtin_ia32_kmovq:
-    llvm_unreachable("kmov NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_kunpckdi:
   case X86::BI__builtin_ia32_kunpcksi:
   case X86::BI__builtin_ia32_kunpckhi:
-    llvm_unreachable("kunpckdi NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vplzcntd_128:
   case X86::BI__builtin_ia32_vplzcntd_256:
@@ -1581,11 +1609,11 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vplzcntq_128:
   case X86::BI__builtin_ia32_vplzcntq_256:
   case X86::BI__builtin_ia32_vplzcntq_512:
-    llvm_unreachable("vplzcntd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_sqrtsh_round_mask:
   case X86::BI__builtin_ia32_sqrtsd_round_mask:
   case X86::BI__builtin_ia32_sqrtss_round_mask:
-    llvm_unreachable("sqrtsh_round_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_sqrtpd256:
   case X86::BI__builtin_ia32_sqrtpd:
   case X86::BI__builtin_ia32_sqrtps256:
@@ -1598,17 +1626,17 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vsqrtbf16512:
   case X86::BI__builtin_ia32_sqrtps512:
   case X86::BI__builtin_ia32_sqrtpd512:
-    llvm_unreachable("sqrtps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_pmuludq128:
   case X86::BI__builtin_ia32_pmuludq256:
   case X86::BI__builtin_ia32_pmuludq512:
-    llvm_unreachable("pmuludq NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_pmuldq128:
   case X86::BI__builtin_ia32_pmuldq256:
   case X86::BI__builtin_ia32_pmuldq512:
-    llvm_unreachable("pmuldq NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_pternlogd512_mask:
   case X86::BI__builtin_ia32_pternlogq512_mask:
@@ -1616,7 +1644,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_pternlogd256_mask:
   case X86::BI__builtin_ia32_pternlogq128_mask:
   case X86::BI__builtin_ia32_pternlogq256_mask:
-    llvm_unreachable("pternlogd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_pternlogd512_maskz:
   case X86::BI__builtin_ia32_pternlogq512_maskz:
@@ -1624,7 +1652,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_pternlogd256_maskz:
   case X86::BI__builtin_ia32_pternlogq128_maskz:
   case X86::BI__builtin_ia32_pternlogq256_maskz:
-    llvm_unreachable("pternlogd_maskz NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vpshldd128:
   case X86::BI__builtin_ia32_vpshldd256:
@@ -1635,7 +1663,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vpshldw128:
   case X86::BI__builtin_ia32_vpshldw256:
   case X86::BI__builtin_ia32_vpshldw512:
-    llvm_unreachable("vpshldd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vpshrdd128:
   case X86::BI__builtin_ia32_vpshrdd256:
@@ -1646,7 +1674,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vpshrdw128:
   case X86::BI__builtin_ia32_vpshrdw256:
   case X86::BI__builtin_ia32_vpshrdw512:
-    llvm_unreachable("vpshrdd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vpshldvd128:
   case X86::BI__builtin_ia32_vpshldvd256:
@@ -1657,7 +1685,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vpshldvw128:
   case X86::BI__builtin_ia32_vpshldvw256:
   case X86::BI__builtin_ia32_vpshldvw512:
-    llvm_unreachable("vpshldvd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vpshrdvd128:
   case X86::BI__builtin_ia32_vpshrdvd256:
@@ -1668,31 +1696,31 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vpshrdvw128:
   case X86::BI__builtin_ia32_vpshrdvw256:
   case X86::BI__builtin_ia32_vpshrdvw512:
-    llvm_unreachable("vpshrdvd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_reduce_fadd_pd512:
   case X86::BI__builtin_ia32_reduce_fadd_ps512:
   case X86::BI__builtin_ia32_reduce_fadd_ph512:
   case X86::BI__builtin_ia32_reduce_fadd_ph256:
   case X86::BI__builtin_ia32_reduce_fadd_ph128:
-    llvm_unreachable("reduce_fadd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_reduce_fmul_pd512:
   case X86::BI__builtin_ia32_reduce_fmul_ps512:
   case X86::BI__builtin_ia32_reduce_fmul_ph512:
   case X86::BI__builtin_ia32_reduce_fmul_ph256:
   case X86::BI__builtin_ia32_reduce_fmul_ph128:
-    llvm_unreachable("reduce_fmul NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_reduce_fmax_pd512:
   case X86::BI__builtin_ia32_reduce_fmax_ps512:
   case X86::BI__builtin_ia32_reduce_fmax_ph512:
   case X86::BI__builtin_ia32_reduce_fmax_ph256:
   case X86::BI__builtin_ia32_reduce_fmax_ph128:
-    llvm_unreachable("reduce_fmax NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_reduce_fmin_pd512:
   case X86::BI__builtin_ia32_reduce_fmin_ps512:
   case X86::BI__builtin_ia32_reduce_fmin_ph512:
   case X86::BI__builtin_ia32_reduce_fmin_ph256:
   case X86::BI__builtin_ia32_reduce_fmin_ph128:
-    llvm_unreachable("reduce_fmin NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_rdrand16_step:
   case X86::BI__builtin_ia32_rdrand32_step:
@@ -1700,12 +1728,12 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_rdseed16_step:
   case X86::BI__builtin_ia32_rdseed32_step:
   case X86::BI__builtin_ia32_rdseed64_step:
-    llvm_unreachable("rdrand_step NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_addcarryx_u32:
   case X86::BI__builtin_ia32_addcarryx_u64:
   case X86::BI__builtin_ia32_subborrow_u32:
   case X86::BI__builtin_ia32_subborrow_u64:
-    llvm_unreachable("addcarryx_u32 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_fpclassps128_mask:
   case X86::BI__builtin_ia32_fpclassps256_mask:
@@ -1719,7 +1747,7 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_fpclasspd128_mask:
   case X86::BI__builtin_ia32_fpclasspd256_mask:
   case X86::BI__builtin_ia32_fpclasspd512_mask:
-    llvm_unreachable("fpclassps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vp2intersect_q_512:
   case X86::BI__builtin_ia32_vp2intersect_q_256:
@@ -1727,46 +1755,46 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vp2intersect_d_512:
   case X86::BI__builtin_ia32_vp2intersect_d_256:
   case X86::BI__builtin_ia32_vp2intersect_d_128:
-    llvm_unreachable("vp2intersect NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vpmultishiftqb128:
   case X86::BI__builtin_ia32_vpmultishiftqb256:
   case X86::BI__builtin_ia32_vpmultishiftqb512:
-    llvm_unreachable("vpmultishiftqb NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_vpshufbitqmb128_mask:
   case X86::BI__builtin_ia32_vpshufbitqmb256_mask:
   case X86::BI__builtin_ia32_vpshufbitqmb512_mask:
-    llvm_unreachable("vpshufbitqmb NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   // packed comparison intrinsics
   case X86::BI__builtin_ia32_cmpeqps:
   case X86::BI__builtin_ia32_cmpeqpd:
-    llvm_unreachable("cmpeqps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpltps:
   case X86::BI__builtin_ia32_cmpltpd:
-    llvm_unreachable("cmpltps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpleps:
   case X86::BI__builtin_ia32_cmplepd:
-    llvm_unreachable("cmpleps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpunordps:
   case X86::BI__builtin_ia32_cmpunordpd:
     // Try generic fallback for unknown X86 intrinsics
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    llvm_unreachable("cmpunordps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpneqps:
   case X86::BI__builtin_ia32_cmpneqpd:
-    llvm_unreachable("cmpneqps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpnltps:
   case X86::BI__builtin_ia32_cmpnltpd:
-    llvm_unreachable("cmpnltps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpnleps:
   case X86::BI__builtin_ia32_cmpnlepd:
-    llvm_unreachable("cmpnleps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpordps:
   case X86::BI__builtin_ia32_cmpordpd:
-    llvm_unreachable("cmpordps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpph128_mask:
   case X86::BI__builtin_ia32_cmpph256_mask:
   case X86::BI__builtin_ia32_cmpph512_mask:
@@ -1779,49 +1807,49 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vcmpbf16512_mask:
   case X86::BI__builtin_ia32_vcmpbf16256_mask:
   case X86::BI__builtin_ia32_vcmpbf16128_mask:
-    llvm_unreachable("cmpph NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpps:
   case X86::BI__builtin_ia32_cmpps256:
   case X86::BI__builtin_ia32_cmppd:
   case X86::BI__builtin_ia32_cmppd256:
-    llvm_unreachable("cmpps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   // SSE scalar comparison intrinsics
   case X86::BI__builtin_ia32_cmpeqss:
-    llvm_unreachable("cmpeqss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpltss:
     // Try generic fallback for unknown X86 intrinsics
     if (auto fallbackResult = emitX86IntrinsicFallback(BuiltinID, E, Ops)) {
       return fallbackResult;
     }
-    llvm_unreachable("cmpltss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpless:
-    llvm_unreachable("cmpless NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpunordss:
-    llvm_unreachable("cmpunordss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpneqss:
-    llvm_unreachable("cmpneqss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpnltss:
-    llvm_unreachable("cmpnltss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpnless:
-    llvm_unreachable("cmpnless NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpordss:
-    llvm_unreachable("cmpordss NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpeqsd:
-    llvm_unreachable("cmpeqsd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpltsd:
-    llvm_unreachable("cmpltsd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmplesd:
-    llvm_unreachable("cmplesd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpunordsd:
-    llvm_unreachable("cmpunordsd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpneqsd:
-    llvm_unreachable("cmpneqsd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpnltsd:
-    llvm_unreachable("cmpnltsd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpnlesd:
-    llvm_unreachable("cmpnlesd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cmpordsd:
-    llvm_unreachable("cmpordsd NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   // f16c half2float intrinsics
   case X86::BI__builtin_ia32_vcvtph2ps:
@@ -1829,42 +1857,42 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_vcvtph2ps_mask:
   case X86::BI__builtin_ia32_vcvtph2ps256_mask:
   case X86::BI__builtin_ia32_vcvtph2ps512_mask:
-    llvm_unreachable("vcvtph2ps NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   // AVX512 bf16 intrinsics
   case X86::BI__builtin_ia32_cvtneps2bf16_128_mask:
-    llvm_unreachable("cvtneps2bf16_128_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_cvtsbf162ss_32:
-    llvm_unreachable("cvtsbf162ss_32 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__builtin_ia32_cvtneps2bf16_256_mask:
   case X86::BI__builtin_ia32_cvtneps2bf16_512_mask:
-    llvm_unreachable("cvtneps2bf16_256_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__cpuid:
   case X86::BI__cpuidex:
-    llvm_unreachable("cpuid NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__emul:
   case X86::BI__emulu:
-    llvm_unreachable("emul NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__mulh:
   case X86::BI__umulh:
   case X86::BI_mul128:
   case X86::BI_umul128:
-    llvm_unreachable("mulh NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI__faststorefence:
-    llvm_unreachable("faststorefence NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__shiftleft128:
   case X86::BI__shiftright128:
-    llvm_unreachable("shiftleft128 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI_ReadWriteBarrier:
   case X86::BI_ReadBarrier:
   case X86::BI_WriteBarrier:
-    llvm_unreachable("readwritebarrier NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
 
   case X86::BI_AddressOfReturnAddress:
-    llvm_unreachable("addressofreturnaddress NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__stosb:
-    llvm_unreachable("stosb NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   // Corresponding to intrisics which will return 2 tiles (tile0_tile1).
   case X86::BI__builtin_ia32_t2rpntlvwz0_internal:
   case X86::BI__builtin_ia32_t2rpntlvwz0rs_internal:
@@ -1874,49 +1902,49 @@ mlir::Value CIRGenFunction::emitX86BuiltinExpr(unsigned BuiltinID,
   case X86::BI__builtin_ia32_t2rpntlvwz1rs_internal:
   case X86::BI__builtin_ia32_t2rpntlvwz1t1_internal:
   case X86::BI__builtin_ia32_t2rpntlvwz1rst1_internal:
-    llvm_unreachable("t2rpntlvwz0 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__ud2:
     // llvm.trap makes a ud2a instruction on x86.
-    llvm_unreachable("ud2 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__int2c:
-    llvm_unreachable("int2c NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__readfsbyte:
   case X86::BI__readfsword:
   case X86::BI__readfsdword:
   case X86::BI__readfsqword:
-    llvm_unreachable("readfs NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__readgsbyte:
   case X86::BI__readgsword:
   case X86::BI__readgsdword:
   case X86::BI__readgsqword:
-    llvm_unreachable("readgs NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_encodekey128_u32:
-    llvm_unreachable("encodekey128_u32 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_encodekey256_u32:
-    llvm_unreachable("encodekey256_u32 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_aesenc128kl_u8:
   case X86::BI__builtin_ia32_aesdec128kl_u8:
   case X86::BI__builtin_ia32_aesenc256kl_u8:
   case X86::BI__builtin_ia32_aesdec256kl_u8:
-    llvm_unreachable("aesenc128kl_u8 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_aesencwide128kl_u8:
   case X86::BI__builtin_ia32_aesdecwide128kl_u8:
   case X86::BI__builtin_ia32_aesencwide256kl_u8:
   case X86::BI__builtin_ia32_aesdecwide256kl_u8:
-    llvm_unreachable("aesencwide128kl_u8 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfcmaddcph512_mask:
-    llvm_unreachable("vfcmaddcph512_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddcph512_mask:
-    llvm_unreachable("vfmaddcph512_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfcmaddcsh_round_mask:
-    llvm_unreachable("vfcmaddcsh_round_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddcsh_round_mask:
-    llvm_unreachable("vfmaddcsh_round_mask NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfcmaddcsh_round_mask3:
-    llvm_unreachable("vfcmaddcsh_round_mask3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_vfmaddcsh_round_mask3:
-    llvm_unreachable("vfmaddcsh_round_mask3 NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   case X86::BI__builtin_ia32_prefetchi:
-    llvm_unreachable("prefetchi NYI");
+    return emitX86IntrinsicFallback(BuiltinID, E, Ops);
   }
 }

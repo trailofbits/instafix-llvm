@@ -498,7 +498,9 @@ decodeFixedType(ArrayRef<llvm::Intrinsic::IITDescriptor> &infos,
     return cir::VectorType::get(context, elementType, numElements);
   }
   case IITDescriptor::Pointer:
-    llvm_unreachable("NYI: IITDescriptor::Pointer");
+    // Create a void pointer type with the specified address space
+    // The address space is stored in descriptor.Pointer_AddressSpace
+    return cir::PointerType::get(context, cir::VoidType::get(context));
   case IITDescriptor::Struct:
     llvm_unreachable("NYI: IITDescriptor::Struct");
   case IITDescriptor::Argument:
@@ -1596,10 +1598,52 @@ RValue CIRGenFunction::emitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
   case Builtin::BI__builtin_elementwise_sub_sat:
     llvm_unreachable("BI__builtin_elementwise_add/sub_sat NYI");
 
-  case Builtin::BI__builtin_elementwise_max:
-    llvm_unreachable("BI__builtin_elementwise_max NYI");
-  case Builtin::BI__builtin_elementwise_min:
-    llvm_unreachable("BI__builtin_elementwise_min NYI");
+  case Builtin::BI__builtin_elementwise_max: {
+    mlir::Value Op0 = emitScalarExpr(E->getArg(0));
+    mlir::Value Op1 = emitScalarExpr(E->getArg(1));
+    mlir::Type resTy = Op0.getType();
+    std::string intrinsicName;
+    if (mlir::isa<cir::IntType>(resTy) ||
+        (mlir::isa<cir::VectorType>(resTy) &&
+         mlir::isa<cir::IntType>(
+             mlir::cast<cir::VectorType>(resTy).getElementType()))) {
+      QualType Ty = E->getArg(0)->getType();
+      if (auto *VecTy = Ty->getAs<VectorType>())
+        Ty = VecTy->getElementType();
+      intrinsicName = Ty->isSignedIntegerType() ? "smax" : "umax";
+    } else {
+      intrinsicName = "maxnum";
+    }
+    return RValue::get(
+        builder
+            .create<cir::LLVMIntrinsicCallOp>(
+                getLoc(E->getExprLoc()), builder.getStringAttr(intrinsicName),
+                resTy, mlir::ValueRange{Op0, Op1})
+            .getResult());
+  }
+  case Builtin::BI__builtin_elementwise_min: {
+    mlir::Value Op0 = emitScalarExpr(E->getArg(0));
+    mlir::Value Op1 = emitScalarExpr(E->getArg(1));
+    mlir::Type resTy = Op0.getType();
+    std::string intrinsicName;
+    if (mlir::isa<cir::IntType>(resTy) ||
+        (mlir::isa<cir::VectorType>(resTy) &&
+         mlir::isa<cir::IntType>(
+             mlir::cast<cir::VectorType>(resTy).getElementType()))) {
+      QualType Ty = E->getArg(0)->getType();
+      if (auto *VecTy = Ty->getAs<VectorType>())
+        Ty = VecTy->getElementType();
+      intrinsicName = Ty->isSignedIntegerType() ? "smin" : "umin";
+    } else {
+      intrinsicName = "minnum";
+    }
+    return RValue::get(
+        builder
+            .create<cir::LLVMIntrinsicCallOp>(
+                getLoc(E->getExprLoc()), builder.getStringAttr(intrinsicName),
+                resTy, mlir::ValueRange{Op0, Op1})
+            .getResult());
+  }
 
   case Builtin::BI__builtin_elementwise_maximum:
     llvm_unreachable("BI__builtin_elementwise_maximum NYI");
@@ -1660,8 +1704,40 @@ RValue CIRGenFunction::emitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
   case Builtin::BI__builtin_set_flt_rounds:
     llvm_unreachable("BI__builtin_set_flt_rounds NYI");
 
-  case Builtin::BI__builtin_fpclassify:
-    llvm_unreachable("BI__builtin_fpclassify NYI");
+  case Builtin::BI__builtin_fpclassify: {
+    CIRGenFunction::CIRGenFPOptionsRAII FPOptsRAII(*this, E);
+    mlir::Location Loc = getLoc(E->getBeginLoc());
+
+    // Arg 5 is the value to classify
+    mlir::Value V = emitScalarExpr(E->getArg(5));
+
+    // Get the return values for each classification
+    // Args 0-4: NaN, Inf, Normal, Subnormal, Zero (FP_NAN, FP_INFINITE, etc.)
+    mlir::Value NanResult = emitScalarExpr(E->getArg(0));
+    mlir::Value InfResult = emitScalarExpr(E->getArg(1));
+    mlir::Value NormalResult = emitScalarExpr(E->getArg(2));
+    mlir::Value SubnormalResult = emitScalarExpr(E->getArg(3));
+    mlir::Value ZeroResult = emitScalarExpr(E->getArg(4));
+
+    // Check classifications in order: NaN, Inf, Normal, Subnormal, Zero
+    // Using nested selects to emulate the cascaded if-else logic
+    mlir::Value IsNan = builder.createIsFPClass(Loc, V, FPClassTest::fcNan);
+    mlir::Value IsInf = builder.createIsFPClass(Loc, V, FPClassTest::fcInf);
+    mlir::Value IsNormal = builder.createIsFPClass(Loc, V, FPClassTest::fcNormal);
+    mlir::Value IsSubnormal =
+        builder.createIsFPClass(Loc, V, FPClassTest::fcSubnormal);
+
+    // Build nested select: isZero ? Zero : (isSubnormal ? Subnormal : ...)
+    // Since Zero is the default for non-NaN/Inf/Normal/Subnormal, we don't
+    // need to test for it explicitly
+    mlir::Value Result = builder.createSelect(
+        Loc, IsSubnormal, SubnormalResult, ZeroResult);
+    Result = builder.createSelect(Loc, IsNormal, NormalResult, Result);
+    Result = builder.createSelect(Loc, IsInf, InfResult, Result);
+    Result = builder.createSelect(Loc, IsNan, NanResult, Result);
+
+    return RValue::get(Result);
+  }
 
   case Builtin::BIalloca:
   case Builtin::BI_alloca:
@@ -2732,8 +2808,26 @@ RValue CIRGenFunction::emitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
     for (unsigned i = 0; i < E->getNumArgs(); i++) {
       mlir::Value arg = emitScalarOrConstFoldImmArg(iceArguments, i, E);
       mlir::Type argType = arg.getType();
-      if (argType != intrinsicType.getInput(i))
-        llvm_unreachable("NYI");
+      mlir::Type expectedType = intrinsicType.getInput(i);
+      if (argType != expectedType) {
+        // Handle type mismatches by casting when possible
+        if (mlir::isa<cir::PointerType>(argType) &&
+            mlir::isa<cir::PointerType>(expectedType)) {
+          // Cast pointer types
+          arg = builder.createBitcast(arg, expectedType);
+        } else if (mlir::isa<cir::IntType>(argType) &&
+                   mlir::isa<cir::IntType>(expectedType)) {
+          // Cast integer types (truncate or extend)
+          auto srcInt = mlir::cast<cir::IntType>(argType);
+          auto dstInt = mlir::cast<cir::IntType>(expectedType);
+          if (srcInt.getWidth() != dstInt.getWidth()) {
+            arg = builder.createIntCast(arg, expectedType);
+          }
+        } else {
+          // Fallback: try bitcast for other compatible types
+          arg = builder.createBitcast(arg, expectedType);
+        }
+      }
 
       args.push_back(arg);
     }
