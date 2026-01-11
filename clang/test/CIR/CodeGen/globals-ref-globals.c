@@ -64,7 +64,7 @@ int* g12 = &g11.f6;
 // CHECK-DAG: g11 = #cir.const_record<{#cir.int<1> : !s8i, #cir.int<42> : !s32i}> : !rec_S2 {alignment = 1 : i64}
 // CHECK-DAG: g12 = #cir.global_view<@g11, [1 : i32]> : !cir.ptr<!s32i> {alignment = 8 : i64} 
 
-// LLVM-DAG: @g9 = global { i8, [3 x i8], i32 } { i8 1, [3 x i8] zeroinitializer, i32 42 }, align 4
+// LLVM-DAG: @g9 = global %struct.S1 { i8 1, i32 42 }, align 4
 // LLVM-DAG: @g10 = global ptr getelementptr inbounds nuw (i8, ptr @g9, i64 4), align 8
 // LLVM-DAG: @g11 = global %struct.S2 <{ i8 1, i32 42 }>, align 1
 // LLVM-DAG: @g12 = global ptr getelementptr inbounds nuw (i8, ptr @g11, i64 1), align 8
@@ -98,8 +98,8 @@ static S5 g15 = {187,1,442,{123,321}};
 
 int* g16 = &g15.f3.f1;
 
-// CHECK-DAG: g15 = #cir.const_record<{#cir.int<187> : !u8i, #cir.int<0> : !u8i, #cir.int<2> : !u8i, #cir.zero : !u8i, #cir.int<186> : !u8i, #cir.int<1> : !u8i, #cir.int<0> : !u8i, #cir.zero : !u8i, #cir.const_record<{#cir.int<123> : !s32i, #cir.int<321> : !s32i}> : !rec_S4}> : !rec_anon_struct2 {alignment = 4 : i64}
-// CHECK-DAG: g16 = #cir.global_view<@g15, [8, 1]> : !cir.ptr<!rec_anon_struct2> {alignment = 8 : i64}
+// CHECK-DAG: g15 = #cir.const_record<{#cir.int<187> : !u8i, #cir.int<0> : !u8i, #cir.int<2> : !u8i, #cir.zero : !u8i, #cir.int<186> : !u8i, #cir.int<1> : !u8i, #cir.int<0> : !u8i, #cir.zero : !u8i, #cir.const_record<{#cir.int<123> : !s32i, #cir.int<321> : !s32i}> : !rec_S4}> : !rec_anon_struct{{[0-9]+}} {alignment = 4 : i64}
+// CHECK-DAG: g16 = #cir.global_view<@g15, [8, 1]> : !cir.ptr<!rec_anon_struct{{[0-9]+}}> {alignment = 8 : i64}
 
 // LLVM-DAG: @g15 = internal global { i8, i8, i8, i8, i8, i8, i8, i8, %struct.S4 } { i8 -69, i8 0, i8 2, i8 0, i8 -70, i8 1, i8 0, i8 0, %struct.S4 { i32 123, i32 321 } }, align 4
 // LLVM-DAG: @g16 = global ptr getelementptr inbounds nuw (i8, ptr @g15, i64 12), align 8

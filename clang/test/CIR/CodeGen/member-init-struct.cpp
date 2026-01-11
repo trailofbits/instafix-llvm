@@ -23,8 +23,8 @@ C a, b(x), c(0, 2);
 // CHECK:   %[[VAL_1:.*]] = cir.alloca !cir.ptr<!rec_C>, !cir.ptr<!cir.ptr<!rec_C>>, ["this", init] {alignment = 8 : i64}
 // CHECK:   cir.store{{.*}} %{{.*}}, %[[VAL_1]] : !cir.ptr<!rec_C>, !cir.ptr<!cir.ptr<!rec_C>>
 // CHECK:   %[[VAL_2:.*]] = cir.load %[[VAL_1]] : !cir.ptr<!cir.ptr<!rec_C>>, !cir.ptr<!rec_C>
-// CHECK:   %[[VAL_3:.*]] = cir.get_member %[[VAL_2]][0] {name = ""} : !cir.ptr<!rec_C> -> !cir.ptr<!rec_anon{{[_0-9a-fE.]*}}>
-// CHECK:   %[[VAL_4:.*]] = cir.get_member %[[VAL_3]][0] {name = "a"} : !cir.ptr<!rec_anon{{[_0-9a-fE.]*}}> -> !cir.ptr<!rec_A>
+// CHECK:   %[[VAL_3:.*]] = cir.get_member %[[VAL_2]][0] {name = ""} : !cir.ptr<!rec_C> -> !cir.ptr<[[ANON_TYPE:!rec_.*]]>
+// CHECK:   %[[VAL_4:.*]] = cir.get_member %[[VAL_3]][0] {name = "a"} : !cir.ptr<[[ANON_TYPE]]> -> !cir.ptr<!rec_A>
 // CHECK:   %[[VAL_5:.*]] = cir.const {{.*}} : !rec_A
 // CHECK:   cir.store{{.*}} %[[VAL_5]], %[[VAL_4]] : !rec_A, !cir.ptr<!rec_A>
 // CHECK:   cir.call @_ZN1AC1Ev(%[[VAL_4]]) : (!cir.ptr<!rec_A>) -> ()

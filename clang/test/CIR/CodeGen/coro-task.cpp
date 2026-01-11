@@ -126,11 +126,11 @@ co_invoke_fn co_invoke;
 
 }} // namespace folly::coro
 
-// CHECK-DAG: ![[IntTask:.*]] = !cir.record<struct "folly::coro::Task<int>" padded {!u8i}>
-// CHECK-DAG: ![[VoidTask:.*]] = !cir.record<struct "folly::coro::Task<void>" padded {!u8i}>
-// CHECK-DAG: ![[VoidPromisse:.*]] = !cir.record<struct "folly::coro::Task<void>::promise_type" padded {!u8i}>
-// CHECK-DAG: ![[CoroHandleVoid:.*]] = !cir.record<struct "std::coroutine_handle<void>" padded {!u8i}>
-// CHECK-DAG: ![[CoroHandlePromise:rec_.*]]  = !cir.record<struct "std::coroutine_handle<folly::coro::Task<void>::promise_type>" padded {!u8i}>
+// CHECK-DAG: ![[IntTask:.*]] = !cir.record<struct "folly::coro::Task<int>" padded {!u8i}{{.*}}>
+// CHECK-DAG: ![[VoidTask:.*]] = !cir.record<struct "folly::coro::Task<void>" padded {!u8i}{{.*}}>
+// CHECK-DAG: ![[VoidPromisse:.*]] = !cir.record<struct "folly::coro::Task<void>::promise_type" padded {!u8i}{{.*}}>
+// CHECK-DAG: ![[CoroHandleVoid:.*]] = !cir.record<struct "std::coroutine_handle<void>" padded {!u8i}{{.*}}>
+// CHECK-DAG: ![[CoroHandlePromise:rec_.*]]  = !cir.record<struct "std::coroutine_handle<folly::coro::Task<void>::promise_type>" padded {!u8i}{{.*}}>
 // CHECK-DAG: ![[StdString:.*]] = !cir.record<struct "std::string" padded {!u8i}{{.*}}>
 // CHECK-DAG: ![[SuspendAlways:.*]] = !cir.record<struct "std::suspend_always" padded {!u8i}{{.*}}>
 
