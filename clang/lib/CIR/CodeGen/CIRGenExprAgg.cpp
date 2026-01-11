@@ -1722,9 +1722,23 @@ void CIRGenFunction::emitAggregateCopy(LValue Dest, LValue Src, QualType Ty,
   // we need to use a different call here.  We use isVolatile to indicate when
   // either the source or the destination is volatile.
 
-  // NOTE(cir): original codegen would normally convert DestPtr and SrcPtr to
-  // i8* since memcpy operates on bytes. We don't need that in CIR because
-  // cir.copy will operate on any CIR pointer that points to a sized type.
+  // NOTE(cir): When source and destination have different element types,
+  // we need to cast both to byte pointers since cir.copy requires same types.
+  // This happens for example when initializing char arrays from string literals
+  // of different sizes.
+  mlir::Value destPtrVal = DestPtr.getPointer();
+  mlir::Value srcPtrVal = SrcPtr.getPointer();
+
+  auto destPtrTy = mlir::cast<cir::PointerType>(destPtrVal.getType());
+  auto srcPtrTy = mlir::cast<cir::PointerType>(srcPtrVal.getType());
+
+  if (destPtrTy.getPointee() != srcPtrTy.getPointee()) {
+    // Cast both to byte pointer type
+    mlir::Type byteTy = builder.getSIntNTy(8);
+    mlir::Type bytePtrTy = cir::PointerType::get(builder.getContext(), byteTy);
+    destPtrVal = builder.createBitcast(destPtrVal, bytePtrTy);
+    srcPtrVal = builder.createBitcast(srcPtrVal, bytePtrTy);
+  }
 
   // Don't do any of the memmove_collectable tests if GC isn't set.
   if (CGM.getLangOpts().getGC() == LangOptions::NonGC) {
@@ -1743,8 +1757,7 @@ void CIRGenFunction::emitAggregateCopy(LValue Dest, LValue Src, QualType Ty,
     }
   }
 
-  auto copyOp =
-      builder.createCopy(DestPtr.getPointer(), SrcPtr.getPointer(), isVolatile);
+  auto copyOp = builder.createCopy(destPtrVal, srcPtrVal, isVolatile);
 
   // Determine the metadata to describe the position of any padding in this
   // memcpy, as well as the TBAA tags for the members of the struct, in case

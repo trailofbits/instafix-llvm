@@ -433,13 +433,78 @@ mlir::Attribute ConstantAggregateBuilder::buildFrom(
   }
 
   auto &builder = CGM.getBuilder();
-  auto arrAttr = mlir::ArrayAttr::get(builder.getContext(),
-                                      Packed ? PackedElems : UnpackedElems);
+  ArrayRef<mlir::Attribute> elemsToUse = Packed ? PackedElems : UnpackedElems;
+  auto arrAttr = mlir::ArrayAttr::get(builder.getContext(), elemsToUse);
 
   auto strType = builder.getCompleteRecordType(arrAttr, Packed);
-  if (auto desired = dyn_cast<cir::RecordType>(DesiredTy))
-    if (desired.isLayoutIdentical(strType))
+  if (auto desired = dyn_cast<cir::RecordType>(DesiredTy)) {
+    // If the desired type is a named record type and all elements are zero,
+    // prefer using the desired type to avoid creating anonymous struct types
+    // with explicit padding. CIR defers padding to the lowering process.
+    bool allZero = llvm::all_of(Elems, [&](mlir::Attribute attr) {
+      return builder.isNullValue(mlir::dyn_cast<mlir::TypedAttr>(attr));
+    });
+    if (allZero && !desired.getName().empty())
       strType = desired;
+    else if (desired.isLayoutIdentical(strType))
+      strType = desired;
+    else if (!desired.getName().empty()) {
+      // Check if strType has padding (interleaved or trailing) that can be
+      // stripped to match the desired named type. CIR named structs don't
+      // include explicit padding - it's deferred to the lowering process.
+      auto desiredMembers = desired.getMembers();
+      auto strMembers = strType.getMembers();
+      if (strMembers.size() > desiredMembers.size()) {
+        // Try to match desired members against strMembers, skipping padding
+        // arrays in strMembers. Padding arrays are zero-initialized arrays
+        // of u8i used for alignment.
+        llvm::SmallVector<mlir::Attribute, 32> strippedElems;
+        size_t desiredIdx = 0;
+        bool canStripPadding = true;
+        for (size_t strIdx = 0;
+             strIdx < elemsToUse.size() && canStripPadding; ++strIdx) {
+          auto typedAttr = mlir::dyn_cast<mlir::TypedAttr>(elemsToUse[strIdx]);
+          if (!typedAttr) {
+            canStripPadding = false;
+            continue;
+          }
+          // Check if this is a padding element (zero-initialized array of u8i)
+          bool isPadding = false;
+          if (auto arrTy = mlir::dyn_cast<cir::ArrayType>(typedAttr.getType())) {
+            if (auto intTy =
+                    mlir::dyn_cast<cir::IntType>(arrTy.getElementType())) {
+              if (intTy.isUnsigned() && intTy.getWidth() == 8 &&
+                  builder.isNullValue(typedAttr)) {
+                isPadding = true;
+              }
+            }
+          }
+          if (isPadding) {
+            // Skip this padding element - don't add to strippedElems
+            continue;
+          }
+          // This is a non-padding element - check if it matches the desired
+          if (desiredIdx >= desiredMembers.size()) {
+            // More non-padding elements than desired members
+            canStripPadding = false;
+            continue;
+          }
+          if (typedAttr.getType() != desiredMembers[desiredIdx]) {
+            // Type mismatch
+            canStripPadding = false;
+            continue;
+          }
+          strippedElems.push_back(typedAttr);
+          desiredIdx++;
+        }
+        // Verify we matched all desired members
+        if (canStripPadding && desiredIdx == desiredMembers.size()) {
+          strType = desired;
+          arrAttr = mlir::ArrayAttr::get(builder.getContext(), strippedElems);
+        }
+      }
+    }
+  }
 
   return builder.getConstRecordOrZeroAttr(arrAttr, Packed, Padded, strType);
 }
@@ -1285,11 +1350,22 @@ emitArrayConstant(CIRGenModule &CGM, mlir::Type DesiredType,
         cir::ArrayType::get(CommonElementType, ArrayBound));
   }
 
+  // Even when elements have different types (e.g., compound literals vs zero
+  // initializers), we should emit a proper array using the declared element
+  // type from DesiredType. This is important because array element accesses
+  // expect array types, not struct types.
   SmallVector<mlir::Attribute, 4> Eles;
   Eles.reserve(Elements.size());
   for (auto const &Element : Elements)
     Eles.push_back(Element);
 
+  // Get the declared element type from DesiredType if it's an array type
+  if (auto arrayTy = mlir::dyn_cast<cir::ArrayType>(DesiredType)) {
+    return builder.getConstArray(
+        mlir::ArrayAttr::get(builder.getContext(), Eles), arrayTy);
+  }
+
+  // Fallback for non-array desired types (shouldn't happen for array init)
   auto arrAttr = mlir::ArrayAttr::get(builder.getContext(), Eles);
   return builder.getAnonConstRecord(arrAttr, false);
 }
