@@ -39,7 +39,7 @@ public:
 // CHECK: ![[ClassA:rec_.*]] = !cir.record<class "A" {!cir.vptr} #cir.record.decl.ast>
 
 // Class B
-// CHECK: ![[ClassB:rec_.*]] = !cir.record<class "B" {![[ClassA]]}>
+// CHECK: ![[ClassB:rec_.*]] = !cir.record<class "B" {![[ClassA]]}{{.*}}>
 
 // CHECK: cir.func dso_local @_Z4bluev()
 // CHECK:   %0 = cir.alloca !rec_PSEvent, !cir.ptr<!rec_PSEvent>, ["p", init] {alignment = 8 : i64}

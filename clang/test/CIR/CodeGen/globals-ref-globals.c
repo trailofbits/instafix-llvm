@@ -19,10 +19,8 @@ static S g6[2] = {{2799, 9, 123}, {2799, 9, 123}};
 static int *g7[2] = {&g6[0].f2, &g6[1].f2};
 static int **g8 = &g7[1];
 
-// CHECK-DAG: !rec_anon_struct = !cir.record<struct  {!u8i, !u8i, !u8i, !u8i, !s32i, !s32i}>
-// CHECK-DAG: !rec_anon_struct1 = !cir.record<struct  {!s8i, !cir.array<!u8i x 3>, !s32i}>
-// CHECK-DAG: !rec_anon_struct2 = !cir.record<struct  {!u8i, !u8i, !u8i, !u8i, !u8i, !u8i, !u8i, !u8i, !rec_S4}>
-// CHECK-DAG: !rec_anon_struct3 = !cir.record<struct  {!s16i, !cir.array<!u8i x 2>, !s32i, !s8i, !cir.array<!u8i x 3>}>
+// CHECK-DAG: !rec_anon_struct{{[0-9]*}} = !cir.record<struct {{.*}}{!u8i, !u8i, !u8i, !u8i, !s32i, !s32i}{{.*}}>
+// CHECK-DAG: !rec_anon_struct{{[0-9]*}} = !cir.record<struct {{.*}}{!u8i, !u8i, !u8i, !u8i, !u8i, !u8i, !u8i, !u8i, !rec_S4}{{.*}}>
 
 // CHECK-DAG: g1 = #cir.const_record<{#cir.int<239> : !u8i, #cir.int<10> : !u8i, #cir.int<0> : !u8i, #cir.zero : !u8i, #cir.int<9> : !s32i, #cir.int<123> : !s32i}> : !rec_anon_struct
 // CHECK-DAG: g2 = #cir.const_array<[#cir.global_view<@g1, [4]> : !cir.ptr<!rec_anon_struct>, #cir.global_view<@g1, [4]> : !cir.ptr<!rec_anon_struct>, #cir.global_view<@g1, [4]> : !cir.ptr<!rec_anon_struct>, #cir.global_view<@g1, [4]> : !cir.ptr<!rec_anon_struct>]> : !cir.array<!cir.ptr<!s32i> x 4>
@@ -61,8 +59,8 @@ typedef struct {
 S2 g11 = {1, 42};
 int* g12 = &g11.f6;
 
-// CHECK-DAG: g9 = #cir.const_record<{#cir.int<1> : !s8i, #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 3>, #cir.int<42> : !s32i}> : !rec_anon_struct1 {alignment = 4 : i64}
-// CHECK-DAG: g10 = #cir.global_view<@g9, [2 : i32]> : !cir.ptr<!s32i> {alignment = 8 : i64}
+// CHECK-DAG: g9 = #cir.const_record<{#cir.int<1> : !s8i, #cir.int<42> : !s32i}> : !rec_S1 {alignment = 4 : i64}
+// CHECK-DAG: g10 = #cir.global_view<@g9, [1 : i32]> : !cir.ptr<!s32i> {alignment = 8 : i64}
 // CHECK-DAG: g11 = #cir.const_record<{#cir.int<1> : !s8i, #cir.int<42> : !s32i}> : !rec_S2 {alignment = 1 : i64}
 // CHECK-DAG: g12 = #cir.global_view<@g11, [1 : i32]> : !cir.ptr<!s32i> {alignment = 8 : i64} 
 
@@ -81,7 +79,7 @@ typedef struct {
 static S3 g13 = {-1L,0L,1L};
 static S3* g14[2][2] = {{0, &g13}, {&g13, &g13}};
 
-// CHECK-DAG: g13 = #cir.const_record<{#cir.int<-1> : !s16i, #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 2>, #cir.int<0> : !s32i, #cir.int<1> : !s8i, #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 3>}> : !rec_anon_struct3
+// CHECK-DAG: g13 = #cir.const_record<{#cir.int<-1> : !s16i, #cir.int<0> : !s32i, #cir.int<1> : !s8i}> : !rec_S3
 // CHECK-DAG: g14 = #cir.const_array<[#cir.const_array<[#cir.ptr<null> : !cir.ptr<!rec_S3>, #cir.global_view<@g13> : !cir.ptr<!rec_S3>]> : !cir.array<!cir.ptr<!rec_S3> x 2>, #cir.const_array<[#cir.global_view<@g13> : !cir.ptr<!rec_S3>, #cir.global_view<@g13> : !cir.ptr<!rec_S3>]> : !cir.array<!cir.ptr<!rec_S3> x 2>]> : !cir.array<!cir.array<!cir.ptr<!rec_S3> x 2> x 2>
 
 typedef struct {

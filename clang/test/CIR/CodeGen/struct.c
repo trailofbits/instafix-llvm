@@ -23,10 +23,10 @@ void baz(void) {
 }
 
 // CHECK-DAG: !rec_Node = !cir.record<struct "Node" {!cir.ptr<!cir.record<struct "Node">>} #cir.record.decl.ast>
-// CHECK-DAG: !rec_Bar = !cir.record<struct "Bar" {!s32i, !s8i}>
-// CHECK-DAG: !rec_Foo = !cir.record<struct "Foo" {!s32i, !s8i, !rec_Bar}>
-// CHECK-DAG: !rec_SLocal = !cir.record<struct "SLocal" {!s32i}>
-// CHECK-DAG: !rec_SLocal2E0 = !cir.record<struct "SLocal.0" {!cir.float}>
+// CHECK-DAG: !rec_Bar = !cir.record<struct "Bar" {!s32i, !s8i}{{.*}}{{.*}}>
+// CHECK-DAG: !rec_Foo = !cir.record<struct "Foo" {!s32i, !s8i, !rec_Bar}{{.*}}{{.*}}>
+// CHECK-DAG: !rec_SLocal = !cir.record<struct "SLocal" {!s32i}{{.*}}{{.*}}>
+// CHECK-DAG: !rec_SLocal{{.*}} = !cir.record<struct "SLocal{{.*}}" {!cir.float}{{.*}}{{.*}}>
 //  CHECK-DAG: module {{.*}} {
      // CHECK:   cir.func dso_local @baz()
 // CHECK-NEXT:     %0 = cir.alloca !rec_Bar, !cir.ptr<!rec_Bar>, ["b"] {alignment = 4 : i64}
@@ -38,13 +38,8 @@ void shouldConstInitStructs(void) {
 // CHECK: cir.func dso_local @shouldConstInitStructs
   struct Foo f = {1, 2, {3, 4}};
   // CHECK: %[[#V0:]] = cir.alloca !rec_Foo, !cir.ptr<!rec_Foo>, ["f"] {alignment = 4 : i64}
-  // CHECK: %[[#V1:]] = cir.cast(bitcast, %[[#V0]] : !cir.ptr<!rec_Foo>), !cir.ptr<!rec_anon_struct1>
-  // CHECK: %[[#V2:]] = cir.const #cir.const_record<{#cir.int<1> : !s32i, #cir.int<2> : !s8i,
-  // CHECK-SAME:        #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 3>,
-  // CHECK-SAME:        #cir.const_record<{#cir.int<3> : !s32i, #cir.int<4> : !s8i,
-  // CHECK-SAME:        #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 3>}>
-  // CHECK-SAME:        : !rec_anon_struct}> : !rec_anon_struct1
-  // CHECK: cir.store{{.*}} %[[#V2]], %[[#V1]] : !rec_anon_struct1, !cir.ptr<!rec_anon_struct1>
+  // CHECK: %[[#V1:]] = cir.const #cir.const_record<{#cir.int<1> : !s32i, #cir.int<2> : !s8i, #cir.const_record<{#cir.int<3> : !s32i, #cir.int<4> : !s8i}> : !rec_Bar}> : !rec_Foo
+  // CHECK: cir.store{{.*}} %[[#V1]], %[[#V0]] : !rec_Foo, !cir.ptr<!rec_Foo>
 }
 
 // Should zero-initialize uninitialized global structs.

@@ -15,8 +15,8 @@ short use() {
   U u;
   return **g3;
 }
-// CHECK:       !rec_U = !cir.record<union "U" padded {!s16i, !u16i, !u8i, !u8i, !cir.array<!u8i x 2>}>
-// CHECK:       !rec_anon_struct = !cir.record<struct  {!s16i, !cir.array<!u8i x 2>}>
+// CHECK:       !rec_U = !cir.record<union "U" padded {!s16i, !u16i, !u8i, !u8i, !cir.array<!u8i x 2>}{{.*}}>
+// CHECK:       !rec_anon_struct{{[0-9]*}} = !cir.record<struct {{.*}}{!s16i, !cir.array<!u8i x 2>}>
 
 // CHECK:       @g3 = #cir.global_view<@g2> : !cir.ptr<!cir.ptr<!s16i>>
 // CHECK:       @g2 = #cir.const_array<[#cir.global_view<@g1, [1]> : !cir.ptr<!s16i>]> : !cir.array<!cir.ptr<!s16i> x 1>

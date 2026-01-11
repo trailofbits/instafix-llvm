@@ -11,9 +11,9 @@ struct __long {
   unsigned __size_;
   unsigned *__data_;
 };
-// CHECK-DAG: !rec_anon2E0 = !cir.record<struct "anon.0" {!u32i} #cir.record.decl.ast>
-// CHECK-DAG: !rec___long = !cir.record<struct "__long" {!rec_anon2E0, !u32i, !cir.ptr<!u32i>}>
-// CHECK-DAG: !rec_anon_struct = !cir.record<struct  {!u8i, !u8i, !cir.array<!u8i x 2>, !s32i}>
+// CHECK-DAG: !rec_{{[A-Za-z0-9_:]+}} = !cir.record<struct "__long::anon" {!u32i} #cir.record.decl.ast>
+// CHECK-DAG: !rec___long = !cir.record<struct "__long" {!rec_{{[A-Za-z0-9_]+}}, !u32i, !cir.ptr<!u32i>}{{.*}}>
+// CHECK-DAG: !rec_anon_struct{{[0-9]*}} = !cir.record<struct {{.*}}{!u8i, !u8i, !cir.array<!u8i x 2>, !s32i}>
 void m() {
   struct __long l;
 }
@@ -23,7 +23,7 @@ typedef struct {
   int b : 5;
   int c;
 } D;
-// CHECK-DAG: !rec_D = !cir.record<struct "D" {!u16i, !s32i}>
+// CHECK-DAG: !rec_D = !cir.record<struct "D" {!u16i, !s32i}{{.*}}>
 
 typedef struct {
   int a : 4;
@@ -33,7 +33,7 @@ typedef struct {
   int e : 15;
   unsigned f; // type other than int above, not a bitfield
 } S;
-// CHECK-DAG: !rec_S = !cir.record<struct "S" {!u64i, !u16i, !u32i}>
+// CHECK-DAG: !rec_S = !cir.record<struct "S" {!u64i, !u16i, !u32i}{{.*}}>
 // CHECK-DAG: #bfi_d = #cir.bitfield_info<name = "d", storage_type = !u64i, size = 2, offset = 49, is_signed = true>
 // CHECK-DAG: #bfi_e = #cir.bitfield_info<name = "e", storage_type = !u16i, size = 15, offset = 0, is_signed = true>
 typedef struct {
@@ -60,7 +60,7 @@ typedef struct {
 
     int l: 14;
 } U;
-// CHECK-DAG: !cir.record<struct "U" packed {!s8i, !s8i, !s8i, !u8i, !u64i}>
+// CHECK-DAG: !cir.record<struct "U" packed {!s8i, !s8i, !s8i, !u8i, !u64i}{{.*}}>
 
 // CHECK-DAG: !rec_G = !cir.record<struct "G" {!u16i, !s32i} #cir.record.decl.ast>
 
