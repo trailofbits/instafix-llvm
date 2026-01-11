@@ -386,34 +386,25 @@ Type RecordType::parse(mlir::AsmParser &parser) {
   if (name && !complete) { // Identified & incomplete
     type = getChecked(eLoc, context, name, kind);
   } else if (name && complete) { // Identified & complete
-    // Structural deduplication: check if a structurally identical type exists.
-    // This handles cases like libjpeg-turbo's my_coef_controller struct which
-    // has different members in different translation units due to #ifdef guards.
+    // Handle name collision: if a type with this name already exists with
+    // different members (e.g., due to #ifdef guards in different TUs),
+    // generate a unique name with suffix.
     auto &registry = getCIRStructTypeSet(context);
-    if (auto existing = registry.findNonOpaque(membersRef, packed, padded, kind)) {
-      // Found a type with identical layout - reuse it regardless of name.
-      // This is safe because layout is what matters for binary compatibility.
-      type = existing;
-    } else {
-      // No structural match - check if this name is already used.
-      auto existingByName = getChecked(eLoc, context, name, kind);
-      if (existingByName && !existingByName.isIncomplete()) {
-        // Name collision with different structure - generate unique name.
-        // This mirrors LLVM's handling in Type.cpp where struct types get
-        // suffixes like "Foo.0", "Foo.1", etc.
-        name = registry.generateUniqueName(name, context);
-      }
-
-      // Create the type (or get existing incomplete type to complete).
-      type = getChecked(eLoc, context, membersRef, name, packed, padded, kind);
-      // If the record has a self-reference, its type already exists in a
-      // incomplete state. In this case, we must complete it.
-      if (mlir::cast<RecordType>(type).isIncomplete())
-        mlir::cast<RecordType>(type).complete(membersRef, packed, padded, ast);
-
-      // Register for future structural lookups.
-      registry.addNonOpaque(mlir::cast<RecordType>(type));
+    auto existingByName = getChecked(eLoc, context, name, kind);
+    if (existingByName && !existingByName.isIncomplete() &&
+        existingByName.getMembers() != membersRef) {
+      // Name collision with different structure - generate unique name.
+      // This mirrors LLVM's handling in Type.cpp where struct types get
+      // suffixes like "Foo.0", "Foo.1", etc.
+      name = registry.generateUniqueName(name, context);
     }
+
+    // Create the type (or get existing incomplete type to complete).
+    type = getChecked(eLoc, context, membersRef, name, packed, padded, kind);
+    // If the record has a self-reference, its type already exists in a
+    // incomplete state. In this case, we must complete it.
+    if (mlir::cast<RecordType>(type).isIncomplete())
+      mlir::cast<RecordType>(type).complete(membersRef, packed, padded, ast);
   } else if (!name && complete) { // anonymous & complete
     type = getChecked(eLoc, context, membersRef, packed, padded, kind);
   } else { // anonymous & incomplete

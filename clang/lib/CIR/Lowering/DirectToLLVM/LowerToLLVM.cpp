@@ -596,9 +596,63 @@ mlir::Value CirAttrToValue::visitCirAttr(cir::ConstArrayAttr constArr) {
 
   // Iteratively lower each constant element of the array.
   if (auto arrayAttr = mlir::dyn_cast<mlir::ArrayAttr>(constArr.getElts())) {
+    // Get the expected element type from the converted array type.
+    auto llvmArrayTy = mlir::cast<mlir::LLVM::LLVMArrayType>(llvmTy);
+    mlir::Type expectedEltTy = llvmArrayTy.getElementType();
+
     for (auto [idx, elt] : llvm::enumerate(arrayAttr)) {
       mlir::Value init =
           emitCirAttrToMemory(parentOp, elt, rewriter, converter, dataLayout);
+
+      // Handle type mismatch: when array elements have different types than
+      // the declared element type (e.g., union array initialization where
+      // each element uses a different union member), we need to handle
+      // the type conversion. Both types should have the same layout.
+      if (init.getType() != expectedEltTy) {
+        // For struct types with matching inner structures, extract fields
+        // from the source and build a new value of the target type.
+        // This handles cases like anonymous struct wrappers vs named unions.
+        auto srcStructTy =
+            mlir::dyn_cast<mlir::LLVM::LLVMStructType>(init.getType());
+        auto dstStructTy =
+            mlir::dyn_cast<mlir::LLVM::LLVMStructType>(expectedEltTy);
+        if (srcStructTy && dstStructTy &&
+            srcStructTy.getBody().size() == dstStructTy.getBody().size()) {
+          // Build a new struct of the expected type by extracting/inserting
+          // each field. This preserves constant semantics for global init.
+          mlir::Value newVal =
+              rewriter.create<mlir::LLVM::UndefOp>(loc, expectedEltTy);
+          for (size_t i = 0; i < srcStructTy.getBody().size(); ++i) {
+            mlir::Value field =
+                rewriter.create<mlir::LLVM::ExtractValueOp>(loc, init, i);
+            // Recursively handle nested type mismatches
+            if (field.getType() != dstStructTy.getBody()[i]) {
+              auto srcInner = mlir::dyn_cast<mlir::LLVM::LLVMStructType>(
+                  field.getType());
+              auto dstInner = mlir::dyn_cast<mlir::LLVM::LLVMStructType>(
+                  dstStructTy.getBody()[i]);
+              if (srcInner && dstInner &&
+                  srcInner.getBody() == dstInner.getBody()) {
+                // Same structure, different name - rebuild with correct type
+                mlir::Value innerVal = rewriter.create<mlir::LLVM::UndefOp>(
+                    loc, dstStructTy.getBody()[i]);
+                for (size_t j = 0; j < srcInner.getBody().size(); ++j) {
+                  mlir::Value innerField =
+                      rewriter.create<mlir::LLVM::ExtractValueOp>(loc, field,
+                                                                  j);
+                  innerVal = rewriter.create<mlir::LLVM::InsertValueOp>(
+                      loc, innerVal, innerField, j);
+                }
+                field = innerVal;
+              }
+            }
+            newVal = rewriter.create<mlir::LLVM::InsertValueOp>(loc, newVal,
+                                                                field, i);
+          }
+          init = newVal;
+        }
+      }
+
       result =
           rewriter.create<mlir::LLVM::InsertValueOp>(loc, result, init, idx);
     }
