@@ -3561,12 +3561,23 @@ LogicalResult cir::ConstArrayAttr::verify(
   auto zeros = 0;
   if (parser.parseOptionalComma().succeeded()) {
     if (parser.parseOptionalKeyword("trailing_zeros").succeeded()) {
-      auto typeSize = mlir::cast<cir::ArrayType>(resultTy.value()).getSize();
+      // When trailing_zeros is present, we need to parse the outer type which
+      // may be larger than the element's type. The outer type is what follows
+      // the '>' in the format: #cir.const_array<...> : TYPE
+      // We'll use the passed-in `type` parameter if it's valid and an array.
+      mlir::Type outerTy = type;
+      if (!outerTy || !mlir::isa<cir::ArrayType>(outerTy)) {
+        // If no valid outer type is provided, use the inner type
+        outerTy = resultTy.value();
+      }
+      auto typeSize = mlir::cast<cir::ArrayType>(outerTy).getSize();
       auto elts = resultVal.value();
       if (auto str = llvm::dyn_cast<mlir::StringAttr>(elts))
         zeros = typeSize - str.size();
       else
         zeros = typeSize - mlir::cast<mlir::ArrayAttr>(elts).size();
+      // Update resultTy to use the outer type for trailing_zeros case
+      resultTy = outerTy;
     } else {
       return {};
     }
@@ -3857,7 +3868,11 @@ LogicalResult cir::GetMethodOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult cir::GetElementOp::verify() {
-  auto arrayTy = mlir::cast<cir::ArrayType>(getBaseType().getPointee());
+  auto pointeeTy = getBaseType().getPointee();
+  if (!mlir::isa<cir::ArrayType>(pointeeTy))
+    return emitOpError() << "operand #0 must be pointer to array type, but got '"
+                         << getBaseType() << "'";
+  auto arrayTy = mlir::cast<cir::ArrayType>(pointeeTy);
   if (getElementType() != arrayTy.getElementType())
     return emitError() << "element type mismatch";
 

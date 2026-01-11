@@ -121,6 +121,10 @@ struct LoweringPreparePass : public LoweringPrepareBase<LoweringPreparePass> {
   /// has an empty name, and prevent collisions.
   uint64_t annonGlobalConstArrayCount = 0;
 
+  /// Track version numbers for named const globals to handle duplicate names
+  /// (e.g., multiple local variables with the same name in different scopes).
+  llvm::StringMap<unsigned> namedConstGlobalVersions;
+
   ///
   /// CUDA related
   /// ------------
@@ -1408,23 +1412,32 @@ void LoweringPreparePass::lowerArrayDtor(ArrayDtor op) {
   lowerArrayDtorCtorIntoLoop(builder, op, eltTy, op.getAddr(), arrayLen, false);
 }
 
-static std::string getGlobalVarNameForConstString(cir::StoreOp op,
-                                                  uint64_t &cnt) {
+static std::string getGlobalVarNameForConstString(
+    cir::StoreOp op, uint64_t &cnt,
+    llvm::StringMap<unsigned> &namedVersions) {
   llvm::SmallString<64> finalName;
-  llvm::raw_svector_ostream Out(finalName);
+  llvm::raw_svector_ostream out(finalName);
 
-  Out << "__const.";
+  out << "__const.";
   if (auto fnOp = op->getParentOfType<cir::FuncOp>()) {
-    Out << fnOp.getSymNameAttr().getValue() << ".";
+    out << fnOp.getSymNameAttr().getValue() << ".";
   } else {
-    Out << "module.";
+    out << "module.";
   }
 
   auto allocaOp = op.getAddr().getDefiningOp<cir::AllocaOp>();
-  if (allocaOp && !allocaOp.getName().empty())
-    Out << allocaOp.getName();
-  else
-    Out << cnt++;
+  if (allocaOp && !allocaOp.getName().empty()) {
+    out << allocaOp.getName();
+    // Track version for named allocas to handle duplicates (e.g., multiple
+    // local variables with the same name in different scopes within a
+    // function).
+    std::string baseName = finalName.str().str();
+    unsigned version = namedVersions[baseName]++;
+    if (version > 0)
+      out << "." << version;
+  } else {
+    out << cnt++;
+  }
   return finalName.c_str();
 }
 
@@ -1443,8 +1456,8 @@ void LoweringPreparePass::lowerToMemCpy(StoreOp op) {
   // constant array or record.
   assert(!cir::MissingFeatures::unnamedAddr() && "NYI");
   builder.setInsertionPointToStart(&theModule.getBodyRegion().front());
-  std::string globalName =
-      getGlobalVarNameForConstString(op, annonGlobalConstArrayCount);
+  std::string globalName = getGlobalVarNameForConstString(
+      op, annonGlobalConstArrayCount, namedConstGlobalVersions);
   cir::GlobalOp globalCst = buildRuntimeVariable(
       builder, globalName, op.getLoc(), op.getValue().getType(),
       cir::GlobalLinkageKind::PrivateLinkage);
@@ -1453,8 +1466,23 @@ void LoweringPreparePass::lowerToMemCpy(StoreOp op) {
 
   // Transform the store into a cir.copy.
   builder.setInsertionPointAfter(op.getOperation());
-  cir::CopyOp memCpy =
-      builder.createCopy(op.getAddr(), builder.createGetGlobal(globalCst));
+
+  mlir::Value destPtr = op.getAddr();
+  mlir::Value srcPtr = builder.createGetGlobal(globalCst);
+
+  // Cast source to destination type if they differ (e.g., string literal
+  // initialization where array sizes may not match exactly).
+  auto destPtrTy = mlir::cast<cir::PointerType>(destPtr.getType());
+  auto srcPtrTy = mlir::cast<cir::PointerType>(srcPtr.getType());
+  if (destPtrTy.getPointee() != srcPtrTy.getPointee()) {
+    // Cast both to byte pointer type for the copy
+    mlir::Type byteTy = builder.getSIntNTy(8);
+    mlir::Type bytePtrTy = cir::PointerType::get(builder.getContext(), byteTy);
+    destPtr = builder.createBitcast(destPtr, bytePtrTy);
+    srcPtr = builder.createBitcast(srcPtr, bytePtrTy);
+  }
+
+  cir::CopyOp memCpy = builder.createCopy(destPtr, srcPtr);
   op->replaceAllUsesWith(memCpy);
   op->erase();
   if (cstOp->getResult(0).getUsers().empty())
@@ -1546,6 +1574,16 @@ void LoweringPreparePass::lowerTrivialConstructorCall(cir::CallOp op) {
     mlir::Value dest = operands[0];
     mlir::Value src = operands[1];
     builder.setInsertionPoint(op);
+
+    // Cast to byte pointers if types differ
+    auto destPtrTy = mlir::cast<cir::PointerType>(dest.getType());
+    auto srcPtrTy = mlir::cast<cir::PointerType>(src.getType());
+    if (destPtrTy.getPointee() != srcPtrTy.getPointee()) {
+      mlir::Type byteTy = builder.getSIntNTy(8);
+      mlir::Type bytePtrTy = cir::PointerType::get(builder.getContext(), byteTy);
+      dest = builder.createBitcast(dest, bytePtrTy);
+      src = builder.createBitcast(src, bytePtrTy);
+    }
     builder.createCopy(dest, src);
     op.erase();
   }

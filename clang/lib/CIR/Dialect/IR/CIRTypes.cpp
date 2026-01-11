@@ -29,6 +29,7 @@
 #include "clang/CIR/Interfaces/ASTAttrInterfaces.h"
 #include "clang/CIR/Interfaces/CIRTypeInterfaces.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -36,8 +37,146 @@
 #include "llvm/Support/MathExtras.h"
 #include <cassert>
 #include <optional>
+#include <mutex>
 
 using cir::MissingFeatures;
+
+//===----------------------------------------------------------------------===//
+// CIR RecordType Structural Deduplication
+//===----------------------------------------------------------------------===//
+//
+// This implements structural deduplication for CIR RecordTypes, similar to
+// LLVM's IdentifiedStructTypeSet in IRMover.cpp. When parsing MLIR modules
+// from multiple translation units (e.g., during linking), the same named
+// struct may have different structural definitions due to conditional
+// compilation (#ifdef guards). MLIR uniquifies types by name only, which
+// causes verification failures when linking.
+//
+// Solution: During parsing, check if a structurally identical type already
+// exists. If so, reuse it. If a name collision occurs with different members,
+// rename with a suffix (e.g., "my_coef_controller.0").
+//
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Key for structural comparison of RecordTypes.
+/// Used to find existing types with identical layout regardless of name.
+struct RecordTypeStructuralKey {
+  llvm::ArrayRef<mlir::Type> members;
+  bool packed;
+  bool padded;
+  cir::RecordType::RecordKind kind;
+
+  RecordTypeStructuralKey(llvm::ArrayRef<mlir::Type> m, bool p, bool pd,
+                          cir::RecordType::RecordKind k)
+      : members(m), packed(p), padded(pd), kind(k) {}
+
+  explicit RecordTypeStructuralKey(cir::RecordType ty)
+      : members(ty.getMembers()), packed(ty.getPacked()),
+        padded(ty.getPadded()), kind(ty.getKind()) {}
+
+  bool operator==(const RecordTypeStructuralKey &other) const {
+    return packed == other.packed && padded == other.padded &&
+           kind == other.kind && members == other.members;
+  }
+};
+
+/// DenseMapInfo for structural keys used in the type registry.
+struct RecordTypeStructuralKeyInfo {
+  static RecordTypeStructuralKey getEmptyKey() {
+    return RecordTypeStructuralKey(llvm::ArrayRef<mlir::Type>(), false, false,
+                                   cir::RecordType::RecordKind::Struct);
+  }
+
+  static RecordTypeStructuralKey getTombstoneKey() {
+    return RecordTypeStructuralKey(llvm::ArrayRef<mlir::Type>(), true, true,
+                                   cir::RecordType::RecordKind::Struct);
+  }
+
+  static unsigned getHashValue(const RecordTypeStructuralKey &key) {
+    return llvm::hash_combine(
+        llvm::hash_combine_range(key.members.begin(), key.members.end()),
+        key.packed, key.padded, static_cast<int>(key.kind));
+  }
+
+  static bool isEqual(const RecordTypeStructuralKey &lhs,
+                      const RecordTypeStructuralKey &rhs) {
+    return lhs == rhs;
+  }
+};
+
+/// Registry for tracking complete named struct types by structural identity.
+/// Similar to LLVM's IdentifiedStructTypeSet in IRMover.h.
+///
+/// This is stored per-MLIRContext to handle structural deduplication during
+/// parsing. When a complete named struct is parsed, we check:
+/// 1. If an identical structure exists (same members, packed, padded, kind),
+///    we can reuse it even if names differ.
+/// 2. If a different structure with the same name exists, we generate a
+///    unique name with a suffix.
+class CIRStructTypeSet {
+  /// Map from structural key to the canonical RecordType for that structure.
+  llvm::DenseMap<RecordTypeStructuralKey, cir::RecordType,
+                 RecordTypeStructuralKeyInfo>
+      NonOpaqueTypes;
+
+  /// Counters for generating unique names per base name.
+  llvm::DenseMap<llvm::StringRef, unsigned> NameCounters;
+
+  /// Mutex for thread safety (parsing may happen from multiple threads).
+  std::mutex Mutex;
+
+public:
+  /// Find an existing complete struct with identical layout.
+  /// Returns nullptr if no matching type exists.
+  cir::RecordType findNonOpaque(llvm::ArrayRef<mlir::Type> members, bool packed,
+                                bool padded, cir::RecordType::RecordKind kind) {
+    std::lock_guard<std::mutex> lock(Mutex);
+    RecordTypeStructuralKey key(members, packed, padded, kind);
+    auto it = NonOpaqueTypes.find(key);
+    return it == NonOpaqueTypes.end() ? cir::RecordType() : it->second;
+  }
+
+  /// Add a complete struct to the registry.
+  void addNonOpaque(cir::RecordType ty) {
+    if (ty.isIncomplete())
+      return;
+    std::lock_guard<std::mutex> lock(Mutex);
+    RecordTypeStructuralKey key(ty);
+    NonOpaqueTypes.try_emplace(key, ty);
+  }
+
+  /// Generate a unique name by appending a suffix (e.g., "Foo.0", "Foo.1").
+  /// Similar to LLVM's Type.cpp name uniquification.
+  mlir::StringAttr generateUniqueName(mlir::StringAttr baseName,
+                                      mlir::MLIRContext *ctx) {
+    std::lock_guard<std::mutex> lock(Mutex);
+    unsigned &counter = NameCounters[baseName.getValue()];
+    std::string newName =
+        (baseName.getValue() + "." + llvm::Twine(counter++)).str();
+    return mlir::StringAttr::get(ctx, newName);
+  }
+};
+
+/// Get the CIRStructTypeSet for a given MLIRContext.
+/// Uses MLIR's context threading to store the registry.
+static CIRStructTypeSet &getCIRStructTypeSet(mlir::MLIRContext *ctx) {
+  // We use a static map keyed by context. This is safe because:
+  // 1. MLIRContext is typically long-lived
+  // 2. Each context has its own type storage, so we need per-context tracking
+  static llvm::DenseMap<mlir::MLIRContext *, std::unique_ptr<CIRStructTypeSet>>
+      registries;
+  static std::mutex registriesMutex;
+
+  std::lock_guard<std::mutex> lock(registriesMutex);
+  auto &ptr = registries[ctx];
+  if (!ptr)
+    ptr = std::make_unique<CIRStructTypeSet>();
+  return *ptr;
+}
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // CIR Helpers
@@ -247,11 +386,34 @@ Type RecordType::parse(mlir::AsmParser &parser) {
   if (name && !complete) { // Identified & incomplete
     type = getChecked(eLoc, context, name, kind);
   } else if (name && complete) { // Identified & complete
-    type = getChecked(eLoc, context, membersRef, name, packed, padded, kind);
-    // If the record has a self-reference, its type already exists in a
-    // incomplete state. In this case, we must complete it.
-    if (mlir::cast<RecordType>(type).isIncomplete())
-      mlir::cast<RecordType>(type).complete(membersRef, packed, padded, ast);
+    // Structural deduplication: check if a structurally identical type exists.
+    // This handles cases like libjpeg-turbo's my_coef_controller struct which
+    // has different members in different translation units due to #ifdef guards.
+    auto &registry = getCIRStructTypeSet(context);
+    if (auto existing = registry.findNonOpaque(membersRef, packed, padded, kind)) {
+      // Found a type with identical layout - reuse it regardless of name.
+      // This is safe because layout is what matters for binary compatibility.
+      type = existing;
+    } else {
+      // No structural match - check if this name is already used.
+      auto existingByName = getChecked(eLoc, context, name, kind);
+      if (existingByName && !existingByName.isIncomplete()) {
+        // Name collision with different structure - generate unique name.
+        // This mirrors LLVM's handling in Type.cpp where struct types get
+        // suffixes like "Foo.0", "Foo.1", etc.
+        name = registry.generateUniqueName(name, context);
+      }
+
+      // Create the type (or get existing incomplete type to complete).
+      type = getChecked(eLoc, context, membersRef, name, packed, padded, kind);
+      // If the record has a self-reference, its type already exists in a
+      // incomplete state. In this case, we must complete it.
+      if (mlir::cast<RecordType>(type).isIncomplete())
+        mlir::cast<RecordType>(type).complete(membersRef, packed, padded, ast);
+
+      // Register for future structural lookups.
+      registry.addNonOpaque(mlir::cast<RecordType>(type));
+    }
   } else if (!name && complete) { // anonymous & complete
     type = getChecked(eLoc, context, membersRef, packed, padded, kind);
   } else { // anonymous & incomplete

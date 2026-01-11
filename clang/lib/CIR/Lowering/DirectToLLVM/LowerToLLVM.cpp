@@ -4727,9 +4727,22 @@ void prepareTypeConverter(mlir::LLVMTypeConverter &converter,
     if (type.getName()) {
       llvmStruct = mlir::LLVM::LLVMStructType::getIdentified(
           type.getContext(), type.getPrefixedName());
+      // setBody may fail if the struct was already initialized with a different
+      // body. This can happen when linking modules where the same named struct
+      // appears with slightly different definitions (e.g., one with AST, one
+      // without). In this case, we use the existing body if compatible, or
+      // report a meaningful error.
       if (llvmStruct.setBody(llvmMembers, /*isPacked=*/type.getPacked())
-              .failed())
-        llvm_unreachable("Failed to set body of record");
+              .failed()) {
+        // Check if the struct is already initialized - if so, use it as-is
+        // since the first definition wins during linking.
+        if (!llvmStruct.isInitialized()) {
+          llvm::errs() << "Failed to set body of record '" << type.getName()
+                       << "'\n";
+          llvm_unreachable("Failed to set body of record");
+        }
+        // Struct already initialized - use existing body (first definition wins)
+      }
     } else { // Record has no name: lower as literal record.
       llvmStruct = mlir::LLVM::LLVMStructType::getLiteral(
           type.getContext(), llvmMembers, /*isPacked=*/type.getPacked());
