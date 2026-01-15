@@ -27,12 +27,12 @@ struct incomplete;
 void yoyo(incomplete *i) {}
 
 //  CHECK-DAG: !rec_incomplete = !cir.record<struct "incomplete" incomplete
-//  CHECK-DAG: !rec_Bar = !cir.record<struct "Bar" {!s32i, !s8i}>
+//  CHECK-DAG: !rec_Bar = !cir.record<struct "Bar" {!s32i, !s8i}{{.*}}>
 
-//  CHECK-DAG: !rec_Foo = !cir.record<struct "Foo" {!s32i, !s8i, !rec_Bar}>
+//  CHECK-DAG: !rec_Foo = !cir.record<struct "Foo" {!s32i, !s8i, !rec_Bar}{{.*}}>
 //  CHECK-DAG: !rec_Mandalore = !cir.record<struct "Mandalore" {!u32i, !cir.ptr<!void>, !s32i} #cir.record.decl.ast>
-//  CHECK-DAG: !rec_Adv = !cir.record<class "Adv" {!rec_Mandalore}>
-//  CHECK-DAG: !rec_Entry = !cir.record<struct "Entry" {!cir.ptr<!cir.func<(!s32i, !cir.ptr<!s8i>, !cir.ptr<!void>) -> !u32i>>}>
+//  CHECK-DAG: !rec_Adv = !cir.record<class "Adv" {!rec_Mandalore}{{.*}}>
+//  CHECK-DAG: !rec_Entry = !cir.record<struct "Entry" {!cir.ptr<!cir.func<(!s32i, !cir.ptr<!s8i>, !cir.ptr<!void>) -> !u32i>>}{{.*}}>
 
 //      CHECK: cir.func linkonce_odr @_ZN3Bar6methodEv(%arg0: !cir.ptr<!rec_Bar>
 // CHECK-NEXT:   %0 = cir.alloca !cir.ptr<!rec_Bar>, !cir.ptr<!cir.ptr<!rec_Bar>>, ["this", init] {alignment = 8 : i64}

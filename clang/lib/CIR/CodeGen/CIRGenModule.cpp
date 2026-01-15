@@ -73,6 +73,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MD5.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -215,6 +216,18 @@ CIRGenModule::CIRGenModule(mlir::MLIRContext &mlirContext,
     theModule->setLoc(mlir::FileLineColLoc::get(&mlirContext, path,
                                                 /*line=*/0,
                                                 /*column=*/0));
+    // Compute a hash of the source file path to use as a prefix for anonymous
+    // type names. This ensures anonymous types from different TUs don't collide
+    // when linking MLIR modules. Format: anon_<8-char-hash>
+    llvm::MD5 hasher;
+    hasher.update(path);
+    llvm::MD5::MD5Result result;
+    hasher.final(result);
+    llvm::SmallString<32> hashStr;
+    llvm::MD5::stringifyResult(result, hashStr);
+    // Use first 8 characters of hash for readability
+    std::string anonPrefix = "anon_" + hashStr.substr(0, 8).str();
+    builder.setAnonTypePrefix(anonPrefix);
   }
 
   // Set CUDA GPU binary handle.
@@ -2062,6 +2075,11 @@ void CIRGenModule::emitTopLevelDecl(Decl *decl) {
   case Decl::Namespace:
     emitDeclContext(cast<NamespaceDecl>(decl));
     break;
+  case Decl::FileScopeAsm:
+    // File-scope assembly is not yet supported in CIR.
+    // For now, we ignore it as it's typically used for inline asm directives
+    // that don't affect the MLIR representation.
+    break;
   case Decl::ClassTemplateSpecialization: {
     // const auto *Spec = cast<ClassTemplateSpecializationDecl>(decl);
     assert(!cir::MissingFeatures::generateDebugInfo() && "NYI");
@@ -2104,6 +2122,7 @@ void CIRGenModule::emitTopLevelDecl(Decl *decl) {
   case Decl::Block:
   case Decl::Empty:
   case Decl::Binding:
+  case Decl::CXXDeductionGuide: // CTAD guides are compile-time only
     break;
   case Decl::Using:     // using X; [C++]
   case Decl::UsingEnum: // using enum X; [C++]

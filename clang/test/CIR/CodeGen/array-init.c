@@ -23,33 +23,15 @@ Outer outers[2] = {
     {1, {0, 0} }
 };
 // CIR:  cir.global{{.*}} @outers =
-// CIR-SAME: #cir.const_record<{
-// CIR-SAME:   #cir.const_record<{
-// CIR-SAME:     #cir.int<1> : !s32i,
-// CIR-SAME:     #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 4>,
-// CIR-SAME:     #cir.const_array<[
-// CIR-SAME:       #cir.const_record<{#cir.int<0> : !s64i,
-// CIR-SAME:                          #cir.int<1> : !s32i,
-// CIR-SAME:                          #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 4>
-// CIR-SAME:       }> : !rec_anon_struct
-// CIR-SAME:     ]> : !cir.array<!rec_anon_struct x 1>
-// CIR-SAME:   }> : !rec_anon_struct2,
-// CIR-SAME:   #cir.const_record<{#cir.int<1> : !s32i,
-// CIR-SAME:                      #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 4>,
-// CIR-SAME:                      #cir.zero : !cir.array<!rec_Inner x 1>
-// CIR-SAME:   }> : !rec_anon_struct1
-// CIR-SAME: }> : !rec_anon_struct3
-// LLVM: @outers = {{.*}}global
-// LLVM-SAME: {
-// LLVM-SAME:   { i32, [4 x i8], [1 x { i64, i32, [4 x i8] }] },
-// LLVM-SAME:   { i32, [4 x i8], [1 x %struct.Inner] }
-// LLVM-SAME: }
-// LLVM-SAME: {
-// LLVM-SAME:   { i32, [4 x i8], [1 x { i64, i32, [4 x i8] }] }
-// LLVM-SAME:    { i32 1, [4 x i8] zeroinitializer, [1 x { i64, i32, [4 x i8] }] [{ i64, i32, [4 x i8] } { i64 0, i32 1, [4 x i8] zeroinitializer }] },
-// LLVM-SAME:   { i32, [4 x i8], [1 x %struct.Inner] }
-// LLVM-SAME:    { i32 1, [4 x i8] zeroinitializer, [1 x %struct.Inner] zeroinitializer }
-// LLVM-SAME: }
+// CIR-SAME: #cir.const_array<[
+// CIR-SAME:   #cir.const_record<{#cir.int<1> : !s32i, #cir.const_array<[
+// CIR-SAME:     #cir.const_record<{#cir.int<0> : !s64i, #cir.int<1> : !s32i}> : !rec_Inner
+// CIR-SAME:   ]> : !cir.array<!rec_Inner x 1>}> : !rec_Outer,
+// CIR-SAME:   #cir.const_record<{#cir.int<1> : !s32i, #cir.zero : !cir.array<!rec_Inner x 1>}> : !rec_Outer
+// CIR-SAME: ]> : !cir.array<!rec_Outer x 2>
+// LLVM: @outers = global [2 x %struct.Outer]
+// LLVM-SAME: [%struct.Outer { i32 1, [1 x %struct.Inner] [%struct.Inner { i64 0, i32 1 }] },
+// LLVM-SAME:  %struct.Outer { i32 1, [1 x %struct.Inner] zeroinitializer }]
 
 void buz(int x) {
   T arr[] = { {x, x}, {0, 0} };

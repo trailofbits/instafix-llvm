@@ -11,7 +11,7 @@ typedef union {
   int z : 8;
 } demo;
 
-// CIR:  !rec_demo = !cir.record<union "demo" {!s32i, !u8i, !u8i}>
+// CIR:  !rec_demo = !cir.record<union "demo" {!s32i, !u8i, !u8i}{{.*}}>
 // LLVM: %union.demo = type { i32 }
 // OGCG: %union.demo = type { i32 }
 

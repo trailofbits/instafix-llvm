@@ -69,7 +69,38 @@ std::string CIRGenTypes::getRecordTypeName(const clang::RecordDecl *recordDecl,
   } else if (auto *typedefNameDecl = recordDecl->getTypedefNameForAnonDecl()) {
     typedefNameDecl->printQualifiedName(outStream, policy);
   } else {
-    outStream << Builder.getUniqueAnonRecordName();
+    // For anonymous types, try to use a named ancestor's name as a prefix
+    // to ensure consistent naming across TUs. Anonymous types inside the same
+    // named parent should get the same name regardless of which TU they're in.
+    // Traverse up the parent chain to find the first named ancestor.
+    const clang::DeclContext *ctx = recordDecl->getLexicalDeclContext();
+    std::string ancestorName;
+    while (ctx) {
+      if (auto *parentRecord = dyn_cast<clang::RecordDecl>(ctx)) {
+        if (parentRecord->getIdentifier()) {
+          // Parent has a direct identifier
+          ancestorName = parentRecord->getName().str();
+          break;
+        }
+        // Check if parent is an anonymous struct with a typedef name
+        if (auto *typedefDecl = parentRecord->getTypedefNameForAnonDecl()) {
+          ancestorName = typedefDecl->getName().str();
+          break;
+        }
+        // Parent is anonymous with no typedef, keep going up
+        ctx = parentRecord->getLexicalDeclContext();
+      } else {
+        // Not inside a record anymore
+        break;
+      }
+    }
+    if (!ancestorName.empty()) {
+      // Found a named ancestor - use it as prefix for this anonymous type
+      outStream << ancestorName << "::anon";
+    } else {
+      // No named ancestor - use the TU-unique prefix
+      outStream << Builder.getUniqueAnonRecordName();
+    }
   }
 
   if (!suffix.empty())

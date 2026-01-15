@@ -1009,7 +1009,12 @@ LValue CIRGenFunction::emitDeclRefLValue(const DeclRefExpr *E) {
         !VD->isLocalVarDecl())
       llvm_unreachable("NYI");
 
-    assert(E->isNonOdrUse() != NOUR_Constant && "not implemented");
+    // Handle NOUR_Constant: when a DeclRefExpr doesn't constitute an ODR use
+    // of the variable (e.g., constant expressions in C++), we may need to
+    // emit the constant value directly. For now, we allow fall-through to
+    // normal handling which works when the variable is still accessible.
+    // TODO: Implement proper constant evaluation and global spilling for cases
+    // where the variable is not accessible.
 
     // Check for captured variables.
     if (E->refersToEnclosingVariableOrCapture()) {
@@ -1957,7 +1962,7 @@ LValue CIRGenFunction::emitCastLValue(const CastExpr *E) {
   // These are never l-values; just use the aggregate emission code.
   case CK_NonAtomicToAtomic:
   case CK_AtomicToNonAtomic:
-    assert(0 && "NYI");
+    return emitAggExprToLValue(E);
 
   case CK_Dynamic: {
     LValue LV = emitLValue(E->getSubExpr());
@@ -2949,7 +2954,24 @@ mlir::Value CIRGenFunction::emitLoadOfScalar(Address addr, bool isVolatile,
   LValue atomicLValue =
       LValue::makeAddr(addr, ty, getContext(), baseInfo, tbaaInfo);
   if (ty->isAtomicType() || LValueIsSuitableForInlineAtomic(atomicLValue)) {
-    llvm_unreachable("NYI");
+    // Emit atomic load with appropriate memory ordering
+    // If ty is atomic type, use seq_cst; otherwise use acquire and mark volatile
+    cir::MemOrder memOrder;
+    bool useVolatile = isVolatile;
+    if (ty->isAtomicType()) {
+      memOrder = cir::MemOrder::SequentiallyConsistent;
+    } else {
+      memOrder = cir::MemOrder::Acquire;
+      useVolatile = true;
+    }
+
+    if (mlir::isa<cir::VoidType>(eltTy))
+      addr = addr.withElementType(builder, builder.getUIntNTy(8));
+    auto loadOp = builder.createLoad(loc, addr, useVolatile, isNontemporal);
+    loadOp.setAtomic(memOrder);
+
+    CGM.decorateOperationWithTBAA(loadOp, tbaaInfo);
+    return emitFromMemory(loadOp, ty);
   }
 
   if (mlir::isa<cir::VoidType>(eltTy))

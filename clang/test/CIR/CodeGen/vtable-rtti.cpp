@@ -31,8 +31,8 @@ public:
 // RTTI_DISABLED-DAG: ![[ClassA:rec_.*]] = !cir.record<class "A" {!cir.vptr} #cir.record.decl.ast>
 
 // Class B
-// CHECK-DAG: ![[ClassB:rec_.*]] = !cir.record<class "B" {![[ClassA]]}>
-// RTTI_DISABLED-DAG: ![[ClassB:rec_.*]] = !cir.record<class "B" {![[ClassA]]}>
+// CHECK-DAG: ![[ClassB:rec_.*]] = !cir.record<class "B" {![[ClassA]]}{{.*}}>
+// RTTI_DISABLED-DAG: ![[ClassB:rec_.*]] = !cir.record<class "B" {![[ClassA]]}{{.*}}>
 
 // B ctor => @B::B()
 // Calls @A::A() and initialize __vptr with address of B's vtable.

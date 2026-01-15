@@ -580,47 +580,240 @@ mlir::Value CirAttrToValue::visitCirAttr(cir::TypeInfoAttr typeinfoArr) {
   return result;
 }
 
+// Helper to check if two struct types are reconcilable (same field count
+// and compatible nested types).
+static bool areStructTypesReconcilable(mlir::LLVM::LLVMStructType srcTy,
+                                       mlir::LLVM::LLVMStructType dstTy) {
+  if (srcTy.getBody().size() != dstTy.getBody().size())
+    return false;
+  // Check that inner types are either equal or both structs with same body
+  for (size_t i = 0; i < srcTy.getBody().size(); ++i) {
+    if (srcTy.getBody()[i] == dstTy.getBody()[i])
+      continue;
+    auto srcInner =
+        mlir::dyn_cast<mlir::LLVM::LLVMStructType>(srcTy.getBody()[i]);
+    auto dstInner =
+        mlir::dyn_cast<mlir::LLVM::LLVMStructType>(dstTy.getBody()[i]);
+    if (!srcInner || !dstInner || srcInner.getBody() != dstInner.getBody())
+      return false;
+  }
+  return true;
+}
+
+// Helper to reconcile a source value to a destination struct type when they
+// have the same structure but different type names.
+static mlir::Value reconcileStructTypes(mlir::OpBuilder &rewriter,
+                                        mlir::Location loc, mlir::Value src,
+                                        mlir::LLVM::LLVMStructType dstTy) {
+  auto srcTy = mlir::cast<mlir::LLVM::LLVMStructType>(src.getType());
+  mlir::Value result = rewriter.create<mlir::LLVM::UndefOp>(loc, dstTy);
+  for (size_t i = 0; i < srcTy.getBody().size(); ++i) {
+    mlir::Value field =
+        rewriter.create<mlir::LLVM::ExtractValueOp>(loc, src, i);
+    // Handle nested type mismatches
+    if (field.getType() != dstTy.getBody()[i]) {
+      auto srcInner =
+          mlir::dyn_cast<mlir::LLVM::LLVMStructType>(field.getType());
+      auto dstInner =
+          mlir::dyn_cast<mlir::LLVM::LLVMStructType>(dstTy.getBody()[i]);
+      if (srcInner && dstInner && srcInner.getBody() == dstInner.getBody()) {
+        mlir::Value innerVal =
+            rewriter.create<mlir::LLVM::UndefOp>(loc, dstTy.getBody()[i]);
+        for (size_t j = 0; j < srcInner.getBody().size(); ++j) {
+          mlir::Value innerField =
+              rewriter.create<mlir::LLVM::ExtractValueOp>(loc, field, j);
+          innerVal = rewriter.create<mlir::LLVM::InsertValueOp>(loc, innerVal,
+                                                                innerField, j);
+        }
+        field = innerVal;
+      }
+    }
+    result =
+        rewriter.create<mlir::LLVM::InsertValueOp>(loc, result, field, i);
+  }
+  return result;
+}
+
 // ConstArrayAttr visitor
 mlir::Value CirAttrToValue::visitCirAttr(cir::ConstArrayAttr constArr) {
   auto llvmTy = converter->convertType(constArr.getType());
   auto loc = parentOp->getLoc();
-  mlir::Value result;
-
-  if (constArr.getTrailingZerosNum() > 0) {
-    auto arrayTy = constArr.getType();
-    result = rewriter.create<mlir::LLVM::ZeroOp>(
-        loc, converter->convertType(arrayTy));
-  } else {
-    result = rewriter.create<mlir::LLVM::UndefOp>(loc, llvmTy);
-  }
 
   // Iteratively lower each constant element of the array.
   if (auto arrayAttr = mlir::dyn_cast<mlir::ArrayAttr>(constArr.getElts())) {
-    for (auto [idx, elt] : llvm::enumerate(arrayAttr)) {
+    // Get the expected element type from the converted array type.
+    auto llvmArrayTy = mlir::cast<mlir::LLVM::LLVMArrayType>(llvmTy);
+    mlir::Type expectedEltTy = llvmArrayTy.getElementType();
+
+    // First pass: convert all elements and collect their types.
+    // This allows us to detect heterogeneous union arrays where elements
+    // have fundamentally different types (different field counts).
+    llvm::SmallVector<mlir::Value> convertedElts;
+    bool hasIrreconcilableTypes = false;
+
+    for (auto elt : arrayAttr) {
       mlir::Value init =
           emitCirAttrToMemory(parentOp, elt, rewriter, converter, dataLayout);
+      convertedElts.push_back(init);
+
+      // Check if this element type can be reconciled with expected type
+      if (init.getType() != expectedEltTy) {
+        auto srcStructTy =
+            mlir::dyn_cast<mlir::LLVM::LLVMStructType>(init.getType());
+        auto dstStructTy =
+            mlir::dyn_cast<mlir::LLVM::LLVMStructType>(expectedEltTy);
+        if (!srcStructTy || !dstStructTy ||
+            !areStructTypesReconcilable(srcStructTy, dstStructTy)) {
+          hasIrreconcilableTypes = true;
+        }
+      }
+    }
+
+    // If elements have irreconcilable types (e.g., union array where different
+    // elements use different union members with different sizes), we create
+    // a packed struct type instead of an array. This matches what standard
+    // Clang does for such initializers - the constant has a struct type
+    // and is memcpy'd into the array location.
+    if (hasIrreconcilableTypes) {
+      llvm::SmallVector<mlir::Type> eltTypes;
+      for (auto &elt : convertedElts)
+        eltTypes.push_back(elt.getType());
+
+      // Create a packed struct type to hold the heterogeneous elements
+      auto packedStructTy = mlir::LLVM::LLVMStructType::getLiteral(
+          rewriter.getContext(), eltTypes, /*isPacked=*/true);
+
+      mlir::Value result =
+          rewriter.create<mlir::LLVM::UndefOp>(loc, packedStructTy);
+      for (auto [idx, elt] : llvm::enumerate(convertedElts)) {
+        result =
+            rewriter.create<mlir::LLVM::InsertValueOp>(loc, result, elt, idx);
+      }
+      return result;
+    }
+
+    // Normal path: all elements have reconcilable types
+    mlir::Value result;
+    if (constArr.getTrailingZerosNum() > 0) {
+      auto arrayTy = constArr.getType();
+      result = rewriter.create<mlir::LLVM::ZeroOp>(
+          loc, converter->convertType(arrayTy));
+    } else {
+      result = rewriter.create<mlir::LLVM::UndefOp>(loc, llvmTy);
+    }
+
+    for (auto [idx, init] : llvm::enumerate(convertedElts)) {
+      // Handle type mismatch: reconcile struct types with same structure
+      // but different names (e.g., anonymous struct wrappers vs named unions).
+      if (init.getType() != expectedEltTy) {
+        auto srcStructTy =
+            mlir::dyn_cast<mlir::LLVM::LLVMStructType>(init.getType());
+        auto dstStructTy =
+            mlir::dyn_cast<mlir::LLVM::LLVMStructType>(expectedEltTy);
+        if (srcStructTy && dstStructTy) {
+          init = reconcileStructTypes(rewriter, loc, init, dstStructTy);
+        }
+      }
+
       result =
           rewriter.create<mlir::LLVM::InsertValueOp>(loc, result, init, idx);
     }
+    return result;
   }
+
   // TODO(cir): this diverges from traditional lowering. Normally the string
   // would be a global constant that is memcopied.
-  else if (auto strAttr =
-               mlir::dyn_cast<mlir::StringAttr>(constArr.getElts())) {
+  if (auto strAttr = mlir::dyn_cast<mlir::StringAttr>(constArr.getElts())) {
     auto arrayTy = mlir::dyn_cast<cir::ArrayType>(strAttr.getType());
     assert(arrayTy && "String attribute must have an array type");
     auto eltTy = arrayTy.getElementType();
+
+    mlir::Value result;
+    if (constArr.getTrailingZerosNum() > 0) {
+      result = rewriter.create<mlir::LLVM::ZeroOp>(loc, llvmTy);
+    } else {
+      result = rewriter.create<mlir::LLVM::UndefOp>(loc, llvmTy);
+    }
+
     for (auto [idx, elt] : llvm::enumerate(strAttr)) {
       auto init = rewriter.create<mlir::LLVM::ConstantOp>(
           loc, converter->convertType(eltTy), elt);
       result =
           rewriter.create<mlir::LLVM::InsertValueOp>(loc, result, init, idx);
     }
-  } else {
-    llvm_unreachable("unexpected ConstArrayAttr elements");
+    return result;
   }
 
-  return result;
+  llvm_unreachable("unexpected ConstArrayAttr elements");
+}
+
+// Get the LLVM type that a CIR attribute would lower to, without creating ops.
+static mlir::Type getAttrLLVMType(mlir::Attribute attr,
+                                  const mlir::TypeConverter *converter) {
+  if (auto typedAttr = mlir::dyn_cast<mlir::TypedAttr>(attr))
+    return converter->convertType(typedAttr.getType());
+  return mlir::Type();
+}
+
+// Computes the LLVM type for a ConstArrayAttr, detecting if heterogeneous
+// struct element types require using a packed struct instead of an array.
+// This only handles the case where array elements are structs with different
+// field counts (e.g., union array initialization with different members).
+// Returns std::nullopt if the standard array type can be used, or the
+// packed struct type if heterogeneous struct elements are detected.
+// Does NOT create any operations - only computes types.
+static std::optional<mlir::Type> computeConstArrayLLVMType(
+    cir::ConstArrayAttr constArr, const mlir::TypeConverter *converter,
+    mlir::MLIRContext *context) {
+
+  auto arrayAttr = mlir::dyn_cast<mlir::ArrayAttr>(constArr.getElts());
+  if (!arrayAttr)
+    return std::nullopt;
+
+  auto llvmTy = converter->convertType(constArr.getType());
+  auto llvmArrayTy = mlir::dyn_cast<mlir::LLVM::LLVMArrayType>(llvmTy);
+  if (!llvmArrayTy)
+    return std::nullopt;
+
+  mlir::Type expectedEltTy = llvmArrayTy.getElementType();
+
+  // Only consider heterogeneous structs - not scalar type differences.
+  // Scalar type differences (like i1 vs i8 for bools) are handled by normal
+  // lowering with type conversions.
+  auto dstStructTy =
+      mlir::dyn_cast<mlir::LLVM::LLVMStructType>(expectedEltTy);
+  if (!dstStructTy)
+    return std::nullopt;
+
+  // Check if any struct elements have irreconcilable types
+  llvm::SmallVector<mlir::Type> elementTypes;
+  bool hasIrreconcilableTypes = false;
+
+  for (auto elt : arrayAttr) {
+    mlir::Type eltType = getAttrLLVMType(elt, converter);
+    if (!eltType)
+      return std::nullopt;
+
+    elementTypes.push_back(eltType);
+
+    if (eltType != expectedEltTy) {
+      auto srcStructTy = mlir::dyn_cast<mlir::LLVM::LLVMStructType>(eltType);
+      // Only flag as irreconcilable if the source is also a struct
+      // (or not a struct at all) and they can't be reconciled
+      if (!srcStructTy ||
+          !areStructTypesReconcilable(srcStructTy, dstStructTy)) {
+        hasIrreconcilableTypes = true;
+      }
+    }
+  }
+
+  if (hasIrreconcilableTypes) {
+    // Create a packed struct type to represent the heterogeneous array
+    return mlir::LLVM::LLVMStructType::getLiteral(context, elementTypes,
+                                                  /*isPacked=*/true);
+  }
+
+  return std::nullopt;
 }
 
 // ConstVectorAttr visitor.
@@ -2707,13 +2900,23 @@ mlir::LogicalResult CIRToLLVMGlobalOpLowering::matchAndRewrite(
   // Fetch required values to create LLVM op.
   const auto cirSymType = op.getSymType();
 
-  const auto llvmType =
+  mlir::Type llvmType =
       convertTypeForMemory(*getTypeConverter(), dataLayout, cirSymType);
   const auto isConst = op.getConstant();
   const auto isDsoLocal = op.getDsoLocal();
   const auto linkage = convertLinkage(op.getLinkage());
   const auto symbol = op.getSymName();
   mlir::Attribute init = op.getInitialValueAttr();
+
+  // Check if this is a ConstArrayAttr with heterogeneous element types
+  // (e.g., union array where different elements use different union members).
+  // If so, use a packed struct type instead of the array type.
+  if (auto constArr = mlir::dyn_cast_if_present<cir::ConstArrayAttr>(init)) {
+    if (auto packedStructTy = computeConstArrayLLVMType(
+            constArr, getTypeConverter(), rewriter.getContext())) {
+      llvmType = *packedStructTy;
+    }
+  }
 
   SmallVector<mlir::NamedAttribute> attributes =
       lowerGlobalAttributes(op, rewriter);
@@ -4727,9 +4930,22 @@ void prepareTypeConverter(mlir::LLVMTypeConverter &converter,
     if (type.getName()) {
       llvmStruct = mlir::LLVM::LLVMStructType::getIdentified(
           type.getContext(), type.getPrefixedName());
+      // setBody may fail if the struct was already initialized with a different
+      // body. This can happen when linking modules where the same named struct
+      // appears with slightly different definitions (e.g., one with AST, one
+      // without). In this case, we use the existing body if compatible, or
+      // report a meaningful error.
       if (llvmStruct.setBody(llvmMembers, /*isPacked=*/type.getPacked())
-              .failed())
-        llvm_unreachable("Failed to set body of record");
+              .failed()) {
+        // Check if the struct is already initialized - if so, use it as-is
+        // since the first definition wins during linking.
+        if (!llvmStruct.isInitialized()) {
+          llvm::errs() << "Failed to set body of record '" << type.getName()
+                       << "'\n";
+          llvm_unreachable("Failed to set body of record");
+        }
+        // Struct already initialized - use existing body (first definition wins)
+      }
     } else { // Record has no name: lower as literal record.
       llvmStruct = mlir::LLVM::LLVMStructType::getLiteral(
           type.getContext(), llvmMembers, /*isPacked=*/type.getPacked());

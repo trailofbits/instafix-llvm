@@ -21,9 +21,9 @@ void init(unsigned numImages) {
   }
 }
 
-// CHECK-DAG: !rec_triple = !cir.record<struct "triple" {!u32i, !cir.ptr<!void>, !u32i}>
-// CHECK-DAG: ![[VEC:.*]] = !cir.record<class "std::vector<triple>" {!cir.ptr<!rec_triple>, !cir.ptr<!rec_triple>, !cir.ptr<!rec_triple>}>
-// CHECK-DAG: ![[VEC_IT:.*]] = !cir.record<struct "__vector_iterator<triple, triple *, triple &>" {!cir.ptr<!rec_triple>}>
+// CHECK-DAG: !rec_triple = !cir.record<struct "triple" {!u32i, !cir.ptr<!void>, !u32i}{{.*}}>
+// CHECK-DAG: ![[VEC:.*]] = !cir.record<class "std::vector<triple>" {!cir.ptr<!rec_triple>, !cir.ptr<!rec_triple>, !cir.ptr<!rec_triple>}{{.*}}>
+// CHECK-DAG: ![[VEC_IT:.*]] = !cir.record<struct "__vector_iterator<triple, triple *, triple &>" {!cir.ptr<!rec_triple>}{{.*}}>
 
 // CHECK: cir.func dso_local @_Z4initj(%arg0: !u32i
 // CHECK:   %0 = cir.alloca !u32i, !cir.ptr<!u32i>, ["numImages", init] {alignment = 4 : i64}

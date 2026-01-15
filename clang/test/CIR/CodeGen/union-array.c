@@ -22,16 +22,16 @@ typedef union {
 } U1;
 
 static U1 g = {5};
-// LLVM: @__const.bar.x = private constant [2 x ptr] [ptr @g, ptr @g]
-// LLVM: @g = internal global { i32 } { i32 5 }
-// FIXME: LLVM output should be: @g = internal global %union.U { i32 5 }
-
-// LLVM: @g2 = global ptr getelementptr inbounds nuw (i8, ptr @g1, i64 24)
 
 void foo() { U arr[2] = {{.b = {1, 2}}, {.a = {1}}}; }
 
-// CIR: cir.const #cir.const_record<{#cir.const_record<{#cir.const_record<{#cir.int<1> : !s64i, #cir.int<2> : !s64i}> : {{.*}}}> : {{.*}}, #cir.const_record<{#cir.const_record<{#cir.int<1> : !s8i}> : {{.*}}, #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 15>}>
-// LLVM: store { { %struct.S_2 }, { %struct.S_1, [15 x i8] } } { { %struct.S_2 } { %struct.S_2 { i64 1, i64 2 } }, { %struct.S_1, [15 x i8] } { %struct.S_1 { i8 1 }, [15 x i8] zeroinitializer } }
+// CIR: #cir.const_array<[#cir.const_record<{#cir.const_record<{#cir.int<1> : !s64i, #cir.int<2> : !s64i}> : {{.*}}}> : {{.*}}, #cir.const_record<{#cir.const_record<{#cir.int<1> : !s8i}> : {{.*}}, #cir.const_array<[#cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i, #cir.zero : !u8i]> : !cir.array<!u8i x 15>}> : {{.*}}]>
+
+// LLVM: @__const.bar.x = private constant [2 x ptr] [ptr @g, ptr @g]
+// LLVM: @__const.foo.arr = private constant <{ { %struct.S_2 }, { %struct.S_1, [15 x i8] } }> <{ { %struct.S_2 } { %struct.S_2 { i64 1, i64 2 } }, { %struct.S_1, [15 x i8] } { %struct.S_1 { i8 1 }, [15 x i8] zeroinitializer } }>
+// LLVM: @g = internal global { i32 } { i32 5 }
+// FIXME: LLVM output should be: @g = internal global %union.U { i32 5 }
+// LLVM: @g2 = global ptr getelementptr inbounds nuw (i8, ptr @g1, i64 24)
 
 void bar(void) {
   int *x[2] = { &g.f0, &g.f0 };

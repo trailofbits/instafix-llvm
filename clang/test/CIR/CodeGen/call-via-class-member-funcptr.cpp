@@ -17,7 +17,7 @@ const char *f::b() { return g.b(h); }
 void fn1() { f f1; }
 
 // CIR: !rec_a = !cir.record<class "a" padded {!u8i} #cir.record.decl.ast>
-// CIR: !rec_f = !cir.record<class "f" {!rec_a}>
+// CIR: !rec_f = !cir.record<class "f" {!rec_a}{{.*}}>
 
 // CIR: cir.global external @h = #cir.int<0>
 // CIR: cir.func private @_ZN1a1bEi(!s32i) -> !cir.ptr<!s8i>

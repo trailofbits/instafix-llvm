@@ -36,6 +36,12 @@ void DropASTPass::runOnOperation() {
       auto ty = mlir::dyn_cast<cir::RecordType>(alloca.getAllocaType());
       if (!ty)
         return;
+      // Don't drop AST from named record types. Named record types are uniqued
+      // by name and used globally (in globals, other functions, etc).
+      // Dropping AST here would affect all uses of the type, breaking linking.
+      // Only drop AST from anonymous record types (used locally).
+      if (ty.getName())
+        return;
       ty.dropAst();
       return;
     }

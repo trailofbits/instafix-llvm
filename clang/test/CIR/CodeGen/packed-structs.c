@@ -22,15 +22,15 @@ typedef struct {
 } __attribute__((aligned(2))) C;
 
 
-// CIR: !rec_A = !cir.record<struct "A" packed {!s32i, !s8i}>
-// CIR: !rec_C = !cir.record<struct "C" packed padded {!s32i, !s8i, !u8i}>
+// CIR: !rec_A = !cir.record<struct "A" packed {!s32i, !s8i}{{.*}}>
+// CIR: !rec_C = !cir.record<struct "C" packed padded {!s32i, !s8i, !u8i}{{.*}}>
 // CIR: !rec_D = !cir.record<struct "D" packed padded {!s8i, !u8i, !s32i}
 // CIR: !rec_F = !cir.record<struct "F" packed {!s64i, !s8i}
 // CIR: !rec_E = !cir.record<struct "E" packed {!rec_D
 // CIR: !rec_G = !cir.record<struct "G" {!rec_F
-// CIR: !rec_H = !cir.record<struct "H" {!s32i, !rec_anon2E0
-// CIR: !rec_B = !cir.record<struct "B" packed {!s32i, !s8i, !cir.array<!rec_A x 6>}>
-// CIR: !rec_I = !cir.record<struct "I" packed {!s8i, !rec_H
+// CIR: !rec_H = !cir.record<struct "H" {!s32i, !rec_{{[A-Za-z0-9_:]+}}
+// CIR: !rec_B = !cir.record<struct "B" packed {!s32i, !s8i, !cir.array<!rec_A x 6>}{{.*}}>
+// CIR: !rec_I = !cir.record<struct "I" packed {!s8i, !rec_H}{{.*}}>
 // CIR: !rec_J = !cir.record<struct "J" packed {!s8i, !s8i, !s8i, !s8i, !rec_I
 
 // LLVM: %struct.A = type <{ i32, i8 }>
@@ -42,7 +42,7 @@ typedef struct {
 // LLVM: %struct.F = type <{ i64, i8 }>
 // LLVM: %struct.J = type <{ i8, i8, i8, i8, %struct.I, i32 }>
 // LLVM: %struct.I = type <{ i8, %struct.H }>
-// LLVM: %struct.H = type { i32, %union.anon.{{.*}} }
+// LLVM: %struct.H = type { i32, %"union.H::anon" }
 
 // CIR: cir.func {{.*@foo()}}
 // CIR:  {{.*}} = cir.alloca !rec_A, !cir.ptr<!rec_A>, ["a"] {alignment = 1 : i64}

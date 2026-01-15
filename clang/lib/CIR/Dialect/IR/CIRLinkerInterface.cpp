@@ -204,15 +204,21 @@ CIRSymbolLinkerInterface::getAddressSpace(Operation *op) {
 //===----------------------------------------------------------------------===//
 
 // Walk all GetGlobalOp operations and fix type mismatches.
-// This handles the case where a declaration with unspecified parameters
-// (e.g., `int foo();` producing `!cir.func<(...) -> !s32i>`) is linked
-// with a definition (e.g., `int foo() {}` producing `!cir.func<() -> !s32i>`).
-// The GetGlobalOp may still have the declaration's type while the FuncOp
+// This handles multiple cases:
+// 1. Functions: declaration with unspecified parameters (e.g., `int foo();`
+//    producing `!cir.func<(...) -> !s32i>`) linked with a definition
+//    (e.g., `int foo() {}` producing `!cir.func<() -> !s32i>`).
+// 2. Global variables: extern declaration (e.g., `extern int arr[];` producing
+//    `!cir.array<i32 x 0>`) linked with definition (e.g., `int arr[6];`
+//    producing `!cir.array<i32 x 6>`).
+//
+// The GetGlobalOp may still have the declaration's type while the symbol
 // has the definition's type after linking.
 
 LogicalResult CIRSymbolLinkerInterface::finalize(ModuleOp dst) const {
 
   SmallVector<GetGlobalOp> toFix;
+  DenseMap<GetGlobalOp, Type> expectedTypes;
 
   dst.walk([&](GetGlobalOp getGlobal) {
     auto *symOp = SymbolTable::lookupNearestSymbolFrom(
@@ -220,31 +226,31 @@ LogicalResult CIRSymbolLinkerInterface::finalize(ModuleOp dst) const {
     if (!symOp)
       return;
 
-    auto funcOp = dyn_cast<FuncOp>(symOp);
-    if (!funcOp)
-      return;
-
-    auto expectedPointeeType = funcOp.getFunctionType();
-
     auto currentPtrType = dyn_cast<PointerType>(getGlobal.getAddr().getType());
     if (!currentPtrType)
       return;
 
     auto currentPointeeType = currentPtrType.getPointee();
+    Type expectedPointeeType;
+
+    if (auto funcOp = dyn_cast<FuncOp>(symOp)) {
+      expectedPointeeType = funcOp.getFunctionType();
+    } else if (auto globalOp = dyn_cast<GlobalOp>(symOp)) {
+      expectedPointeeType = globalOp.getSymType();
+    } else {
+      return;
+    }
 
     if (currentPointeeType == expectedPointeeType)
       return;
 
     toFix.push_back(getGlobal);
+    expectedTypes[getGlobal] = expectedPointeeType;
   });
 
   // Fix the mismatched GetGlobalOps
   for (GetGlobalOp getGlobal : toFix) {
-    auto *symOp = SymbolTable::lookupNearestSymbolFrom(
-        getGlobal, getGlobal.getNameAttr());
-    auto funcOp = cast<FuncOp>(symOp);
-    auto expectedPointeeType = funcOp.getFunctionType();
-
+    auto expectedPointeeType = expectedTypes[getGlobal];
     auto currentPtrType = cast<PointerType>(getGlobal.getAddr().getType());
 
     auto newPtrType = PointerType::get(

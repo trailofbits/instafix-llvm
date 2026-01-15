@@ -57,13 +57,26 @@ class CIRGenBuilderTy : public cir::CIRBaseBuilderTy {
   llvm::StringMap<unsigned> GlobalsVersioning;
   llvm::StringMap<unsigned> RecordNames;
 
+  // Prefix for anonymous type names to ensure uniqueness across TUs.
+  // This should be set to a hash of the source file name.
+  std::string AnonTypePrefix;
+
 public:
   CIRGenBuilderTy(mlir::MLIRContext &C, const CIRGenTypeCache &tc)
       : CIRBaseBuilderTy(C), typeCache(tc) {
     RecordNames["anon"] = 0; // in order to start from the name "anon.0"
   }
 
-  std::string getUniqueAnonRecordName() { return getUniqueRecordName("anon"); }
+  // Set the prefix for anonymous type names. Should be called early during
+  // module initialization with a TU-unique string (e.g., hash of filename).
+  void setAnonTypePrefix(llvm::StringRef prefix) {
+    AnonTypePrefix = prefix.str();
+  }
+
+  std::string getUniqueAnonRecordName() {
+    std::string baseName = AnonTypePrefix.empty() ? "anon" : AnonTypePrefix;
+    return getUniqueRecordName(baseName);
+  }
 
   std::string getUniqueRecordName(const std::string &baseName) {
     auto it = RecordNames.find(baseName);

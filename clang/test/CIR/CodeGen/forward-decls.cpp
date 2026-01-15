@@ -68,7 +68,7 @@ void testRecursiveStruct(struct RecursiveStruct *arg) {
 // types, or all the recursive types are self references.
 
 // CHECK4: ![[B:.+]] = !cir.record<struct "StructNodeB" {!s32i, !cir.ptr<!cir.record<struct "StructNodeA" {!s32i, !cir.ptr<!cir.record<struct "StructNodeB">>}
-// CHECK4: ![[A:.+]] = !cir.record<struct "StructNodeA" {!s32i, !cir.ptr<![[B]]>}>
+// CHECK4: ![[A:.+]] = !cir.record<struct "StructNodeA" {!s32i, !cir.ptr<![[B]]>}{{.*}}>
 struct StructNodeB;
 struct StructNodeA {
   int value;
@@ -96,12 +96,12 @@ void testIndirectSelfReference(struct StructNodeA arg) {
 // RUN: FileCheck --check-prefix=CHECK5 --input-file=%t/complex_struct.cir %s
 
 // A sizeable complex struct just to double check that stuff is working.
-// CHECK5: !cir.record<struct "anon.0" {!cir.ptr<!cir.record<struct "A" {!cir.record<struct "anon.0">, !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !cir.record<struct "C" {!cir.ptr<!cir.record<struct "A">>, !cir.ptr<!cir.record<struct "B">>, !cir.ptr<!cir.record<struct "C">>} #cir.record.decl.ast>, !cir.record<union "anon.1" {!cir.ptr<!cir.record<struct "A">>, !cir.record<struct "anon.2" {!cir.ptr<!cir.record<struct "B">>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>>} #cir.record.decl.ast>
-// CHECK5: !cir.record<struct "C" {!cir.ptr<!cir.record<struct "A" {!rec_anon2E0, !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !cir.record<struct "C">, !cir.record<union "anon.1" {!cir.ptr<!cir.record<struct "A">>, !cir.record<struct "anon.2" {!cir.ptr<!cir.record<struct "B">>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>>, !cir.ptr<!cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !cir.record<struct "C">, !cir.record<union "anon.1" {!cir.ptr<!cir.record<struct "A" {!rec_anon2E0, !cir.record<struct "B">} #cir.record.decl.ast>>, !cir.record<struct "anon.2" {!cir.ptr<!cir.record<struct "B">>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>>, !cir.ptr<!cir.record<struct "C">>} #cir.record.decl.ast>
-// CHECK5: !cir.record<struct "anon.2" {!cir.ptr<!cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !rec_C, !cir.record<union "anon.1" {!cir.ptr<!cir.record<struct "A" {!rec_anon2E0, !cir.record<struct "B">} #cir.record.decl.ast>>, !cir.record<struct "anon.2">} #cir.record.decl.ast>} #cir.record.decl.ast>>} #cir.record.decl.ast>
-// CHECK5: !cir.record<union "anon.1" {!cir.ptr<!cir.record<struct "A" {!rec_anon2E0, !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !rec_C, !cir.record<union "anon.1">} #cir.record.decl.ast>} #cir.record.decl.ast>>, !rec_anon2E2} #cir.record.decl.ast>
-// CHECK5: !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !rec_C, !rec_anon2E1} #cir.record.decl.ast>
-// CHECK5: !cir.record<struct "A" {!rec_anon2E0, !rec_B} #cir.record.decl.ast>
+// CHECK5-DAG: !cir.record<struct "A::anon" {!cir.ptr<!cir.record<struct "A" {!cir.record<struct "A::anon">, !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !cir.record<struct "C" {!cir.ptr<!cir.record<struct "A">>, !cir.ptr<!cir.record<struct "B">>, !cir.ptr<!cir.record<struct "C">>} #cir.record.decl.ast>, !cir.record<union "B::anon" {!cir.ptr<!cir.record<struct "A">>, !cir.record<struct "B::anon.0" {!cir.ptr<!cir.record<struct "B">>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>} #cir.record.decl.ast>>} #cir.record.decl.ast>
+// CHECK5-DAG: !cir.record<struct "C" {!cir.ptr<!cir.record<struct "A" {!rec_{{[A-Za-z0-9:_]*}}, !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !cir.record<struct "C">, !cir.record<union "B::anon" {!cir.ptr<!cir.record<struct "A">>, !rec_{{[A-Za-z0-9:_.]*}}}
+// CHECK5-DAG: !cir.record<struct "B::anon.0" {!cir.ptr<!cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !cir.record<struct "C"
+// CHECK5-DAG: !cir.record<union "B::anon" {!cir.ptr<!cir.record<struct "A" {!rec_{{[A-Za-z0-9:_]*}}, !cir.record<struct "B"
+// CHECK5-DAG: !cir.record<struct "B" {!cir.ptr<!cir.record<struct "B">>, !rec_C, !rec_{{[A-Za-z0-9:_]*}}} #cir.record.decl.ast>
+// CHECK5-DAG: !cir.record<struct "A" {!rec_{{[A-Za-z0-9:_]*}}, !rec_B} #cir.record.decl.ast>
 struct A {
   struct {
     struct A *a1;

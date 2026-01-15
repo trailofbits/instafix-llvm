@@ -7,14 +7,14 @@ typedef union { yolo y; struct { int *lifecnt; int genpad; }; } yolm2;
 typedef union { yolo y; struct { bool life; int genpad; }; } yolm3;
 
 // CHECK-DAG: !rec_U23A3ADummy = !cir.record<struct "U2::Dummy" {!s16i, !cir.float} #cir.record.decl.ast>
-// CHECK-DAG: !rec_anon2E0 = !cir.record<struct "anon.0" {!s32i} #cir.record.decl.ast>
-// CHECK-DAG: !rec_anon2E2 = !cir.record<struct "anon.2" {!cir.bool, !s32i} #cir.record.decl.ast>
+// CHECK-DAG: !rec_{{[A-Za-z0-9_:]+}} = !cir.record<struct "yolm::anon" {!s32i} #cir.record.decl.ast>
+// CHECK-DAG: !rec_{{[A-Za-z0-9_:]+}} = !cir.record<struct "yolm3::anon" {!cir.bool, !s32i} #cir.record.decl.ast>
 // CHECK-DAG: !rec_yolo = !cir.record<struct "yolo" {!s32i} #cir.record.decl.ast>
-// CHECK-DAG: !rec_anon2E1 = !cir.record<struct "anon.1" {!cir.ptr<!s32i>, !s32i} #cir.record.decl.ast>
+// CHECK-DAG: !rec_{{[A-Za-z0-9_:]+}} = !cir.record<struct "yolm2::anon" {!cir.ptr<!s32i>, !s32i} #cir.record.decl.ast>
 
-// CHECK-DAG: !rec_yolm = !cir.record<union "yolm" {!rec_yolo, !rec_anon2E0}>
-// CHECK-DAG: !rec_yolm3 = !cir.record<union "yolm3" {!rec_yolo, !rec_anon2E2}>
-// CHECK-DAG: !rec_yolm2 = !cir.record<union "yolm2" {!rec_yolo, !rec_anon2E1}>
+// CHECK-DAG: !rec_yolm = !cir.record<union "yolm" {!rec_yolo, !rec_{{[A-Za-z0-9_:]+}}}{{.*}}>
+// CHECK-DAG: !rec_yolm3 = !cir.record<union "yolm3" {!rec_yolo, !rec_{{[A-Za-z0-9_:]+}}}{{.*}}>
+// CHECK-DAG: !rec_yolm2 = !cir.record<union "yolm2" {!rec_yolo, !rec_{{[A-Za-z0-9_:]+}}}{{.*}}>
 
 // Should generate a union type with all members preserved.
 union U {
@@ -24,7 +24,7 @@ union U {
   float f;
   double d;
 };
-// CHECK-DAG: !rec_U = !cir.record<union "U" {!cir.bool, !s16i, !s32i, !cir.float, !cir.double}>
+// CHECK-DAG: !rec_U = !cir.record<union "U" {!cir.bool, !s16i, !s32i, !cir.float, !cir.double}{{.*}}>
 
 // Should generate unions with complex members.
 union U2 {
@@ -85,7 +85,6 @@ typedef union {
 void noCrushOnDifferentSizes() {
   A a = {0};
   // CHECK:  %[[#TMP0:]] = cir.alloca !rec_A, !cir.ptr<!rec_A>, ["a"] {alignment = 4 : i64}
-  // CHECK:  %[[#TMP1:]] = cir.cast(bitcast, %[[#TMP0]] : !cir.ptr<!rec_A>), !cir.ptr<!rec_anon_struct>
-  // CHECK:  %[[#TMP2:]] = cir.const #cir.zero : !rec_anon_struct
-  // CHECK:  cir.store{{.*}} %[[#TMP2]], %[[#TMP1]] : !rec_anon_struct, !cir.ptr<!rec_anon_struct>
+  // CHECK:  %[[#TMP1:]] = cir.const #cir.zero : !rec_A
+  // CHECK:  cir.store{{.*}} %[[#TMP1]], %[[#TMP0]] : !rec_A, !cir.ptr<!rec_A>
 }

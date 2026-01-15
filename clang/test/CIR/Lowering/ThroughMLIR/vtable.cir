@@ -45,29 +45,24 @@ module {
 
 // MLIR:  llvm.mlir.global linkonce_odr @_ZTV5Child() {addr_space = 0 : i32, alignment = 8 : i64} : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)> {
 // MLIR:    %{{[0-9]+}} = llvm.mlir.undef : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)>
-// MLIR:    %{{[0-9]+}} = llvm.mlir.undef : !llvm.array<4 x ptr>
 // MLIR:    %{{[0-9]+}} = llvm.mlir.zero : !llvm.ptr
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[0] : !llvm.array<4 x ptr> 
 // MLIR:    %{{[0-9]+}} = llvm.mlir.addressof @_ZTI5Child : !llvm.ptr
-
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[1] : !llvm.array<4 x ptr> 
 // MLIR:    %{{[0-9]+}} = llvm.mlir.addressof @_ZN5Child9MotherFooEv : !llvm.ptr
-
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[2] : !llvm.array<4 x ptr> 
 // MLIR:    %{{[0-9]+}} = llvm.mlir.addressof @_ZN6Mother10MotherFoo2Ev : !llvm.ptr
-
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[3] : !llvm.array<4 x ptr> 
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[0] : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)> 
-// MLIR:    %{{[0-9]+}} = llvm.mlir.undef : !llvm.array<3 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.mlir.undef : !llvm.array<4 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[0] : !llvm.array<4 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[1] : !llvm.array<4 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[2] : !llvm.array<4 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[3] : !llvm.array<4 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[0] : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)>
 // MLIR:    %{{[0-9]+}} = llvm.mlir.constant(-8 : i64) : i64
 // MLIR:    %{{[0-9]+}} = llvm.inttoptr %{{[0-9]+}} : i64 to !llvm.ptr
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[0] : !llvm.array<3 x ptr> 
 // MLIR:    %{{[0-9]+}} = llvm.mlir.addressof @_ZTI5Child : !llvm.ptr
-
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[1] : !llvm.array<3 x ptr> 
 // MLIR:    %{{[0-9]+}} = llvm.mlir.addressof @_ZN6Father9FatherFooEv : !llvm.ptr
-
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[2] : !llvm.array<3 x ptr> 
-// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[1] : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)> 
+// MLIR:    %{{[0-9]+}} = llvm.mlir.undef : !llvm.array<3 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[0] : !llvm.array<3 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[1] : !llvm.array<3 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[2] : !llvm.array<3 x ptr>
+// MLIR:    %{{[0-9]+}} = llvm.insertvalue %{{[0-9]+}}, %{{[0-9]+}}[1] : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)>
 // MLIR:    llvm.return %{{[0-9]+}} : !llvm.struct<(array<4 x ptr>, array<3 x ptr>)>
 // MLIR:  }

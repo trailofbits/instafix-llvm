@@ -1566,7 +1566,10 @@ void CIRGenFunction::emitNullInitialization(mlir::Location loc, Address destPtr,
   // Builder.CreateMemSet. In CIR just emit a store of #cir.zero to the
   // respective address.
   // Builder.CreateMemSet(DestPtr, Builder.getInt8(0), SizeVal, false);
-  builder.createStore(loc, builder.getZero(loc, convertType(ty)), destPtr);
+  // Use destPtr's element type (not convertType(ty)) to avoid type mismatches
+  // between named struct types and anonymous struct types with padding.
+  builder.createStore(loc, builder.getZero(loc, destPtr.getElementType()),
+                      destPtr);
 }
 
 CIRGenFunction::CIRGenFPOptionsRAII::CIRGenFPOptionsRAII(CIRGenFunction &cgf,
