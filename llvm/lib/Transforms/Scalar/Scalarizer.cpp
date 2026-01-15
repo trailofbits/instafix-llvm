@@ -486,6 +486,23 @@ Scatterer ScalarizerVisitor::scatter(Instruction *Point, Value *V,
     if (!DT->isReachableFromEntry(VOp->getParent()))
       return Scatterer(Point->getParent(), Point->getIterator(),
                        PoisonValue::get(V->getType()), VS);
+    // Handle terminators that return vectors (invoke and callbr).
+    // We can't insert instructions after a terminator.
+    if (auto *II = dyn_cast<InvokeInst>(VOp)) {
+      // Insert at the start of the normal destination block.
+      // This ensures extracts dominate all uses (which must be in blocks
+      // dominated by the normal destination).
+      BasicBlock *NormalDest = II->getNormalDest();
+      return Scatterer(NormalDest,
+                       skipPastPhiNodesAndDbg(NormalDest->begin()),
+                       V, VS, &Scattered[{V, VS.SplitTy}]);
+    }
+
+    // For callbr, the result is available in multiple destinations.
+    // Don't cache - create extracts at each use point independently.
+    if (isa<CallBrInst>(VOp))
+      return Scatterer(Point->getParent(), Point->getIterator(), V, VS,
+                       nullptr);
     // Put the scattered form of an instruction directly after the
     // instruction, skipping over PHI nodes and debug intrinsics.
     BasicBlock *BB = VOp->getParent();
